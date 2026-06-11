@@ -5,6 +5,7 @@ import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
+import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
@@ -52,12 +53,12 @@ enum Resource {
 }
 
 enum SectorType {
-    HUB_AI("Hub AI", Resource.TALENT),
-    DISTRICT_FINTECH("District Fintech", Resource.CAPITAL),
-    CAMPUS_CLOUD("Campus Cloud", Resource.CLOUD),
-    QUARTER_IP("Quarter IP", Resource.PATENT),
-    VALLEY_DATA("Valley Data", Resource.DATA),
-    ZONE_REGULATORY("Zone Regulatory", null);
+    HUB_AI("AI", Resource.TALENT),
+    DISTRICT_FINTECH("Fintech", Resource.CAPITAL),
+    CAMPUS_CLOUD("Cloud", Resource.CLOUD),
+    QUARTER_IP("Patent", Resource.PATENT),
+    VALLEY_DATA("Data", Resource.DATA),
+    ZONE_REGULATORY("Zzz", null);
 
     private final String display;
     private final Resource produces;
@@ -1436,7 +1437,7 @@ public class Main extends Application
         HBox playerCountBox = new HBox(10);
         playerCountBox.setAlignment(Pos.CENTER);
         Label countLabel = new Label("Number of Players:");
-        countLabel.setStyle("-fx-fill: #eeeeee;");
+        countLabel.setStyle("-fx-text-fill: #eeeeee;");
         ComboBox<Integer> playerCountCombo = new ComboBox<>();
         playerCountCombo.getItems().addAll(2, 3, 4);
         playerCountCombo.setValue(2);
@@ -1449,7 +1450,7 @@ public class Main extends Application
             int count = playerCountCombo.getValue();
             for (int i = 0; i < count; i++) {
                 Label playerLabel = new Label("Player " + (i + 1) + ":");
-                playerLabel.setStyle("-fx-fill: #eeeeee;");
+                playerLabel.setStyle("-fx-text-fill: #eeeeee;");
                 TextField tf = new TextField("Player " + (i + 1));
                 nameBox.getChildren().addAll(playerLabel, tf);
             }
@@ -1481,24 +1482,29 @@ public class Main extends Application
     }
     
     private void startNewGame(List<String> playerNames, boolean withRoles) {
-        // Run game logic in separate thread (Thread management requirement)
+        // Run game logic in separate thread
         gameThread = new Thread(() -> {
             try {
                 long seed = System.currentTimeMillis();
                 game = new GameController(playerNames, seed);
                 
-                // Run initial placement
                 Platform.runLater(() -> {
-                    try {
-                        performInitialPlacement();
-                        if (withRoles) {
-                            showRoleSelection();
-                        } else {
-                            showGameUI();
-                        }
-                    } catch (Exception ex) {
-                        ex.printStackTrace();
-                        showError("Initial placement failed: " + ex.getMessage());
+                    // Show game UI first so players can see the map
+                    showGameUI();
+                    
+                    // Then show role selection if enabled
+                    if (withRoles) {
+                        showRoleSelection();
+                    } else {
+                        // Start initial placement after UI is visible
+                        Platform.runLater(() -> {
+                            try {
+                                performInitialPlacement();
+                            } catch (Exception ex) {
+                                ex.printStackTrace();
+                                showError("Initial placement failed: " + ex.getMessage());
+                            }
+                        });
                     }
                 });
             } catch (Exception ex) {
@@ -1511,31 +1517,217 @@ public class Main extends Application
     }
     
     private void performInitialPlacement() throws Exception {
-        // Round 1: forward order
+        // Round 1: forward order - each player chooses their placement
         for (int i = 0; i < game.getPlayers().size(); i++) {
             Player player = game.getPlayers().get(i);
-            // Find a valid vertex
-            Vertex vertex = findValidVertexForPlacement();
-            if (vertex != null) {
-                // Find an adjacent edge
-                Edge edge = findAdjacentEdge(vertex.getId());
-                if (edge != null) {
-                    game.setupInitialPlacement(player.getId(), vertex.getId(), edge.getId(), false);
-                }
+            
+            Platform.runLater(() -> {
+                showInitialPlacementDialog(player, false);
+            });
+            
+            // Wait for player to make their choice
+            while (waitingForPlacement) {
+                Thread.sleep(100);
             }
+            waitingForPlacement = false;
         }
         
         // Round 2: reverse order with resource grant
         for (int i = game.getPlayers().size() - 1; i >= 0; i--) {
             Player player = game.getPlayers().get(i);
-            Vertex vertex = findValidVertexForPlacement();
-            if (vertex != null) {
-                Edge edge = findAdjacentEdge(vertex.getId());
-                if (edge != null) {
-                    game.setupInitialPlacement(player.getId(), vertex.getId(), edge.getId(), true);
-                }
+            
+            Platform.runLater(() -> {
+                showInitialPlacementDialog(player, true);
+            });
+            
+            while (waitingForPlacement) {
+                Thread.sleep(100);
+            }
+            waitingForPlacement = false;
+        }
+    }
+
+    private boolean waitingForPlacement = false;
+    private Vertex selectedPlacementVertex = null;
+    private Edge selectedPlacementEdge = null;
+
+    private void showInitialPlacementDialog(Player player, boolean grantResources) {
+        Stage placementStage = new Stage();
+        placementStage.setTitle("Initial Placement - " + player.getName());
+        
+        VBox mainBox = new VBox(15);
+        mainBox.setAlignment(Pos.CENTER);
+        mainBox.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 20px;");
+        
+        Label titleLabel = new Label(player.getName() + " - Place Your Structures");
+        titleLabel.setStyle("-fx-font-size: 18px; -fx-text-fill: #ffd700; -fx-font-weight: bold;");
+        
+        String roundText = grantResources ? "Round 2 (Reverse Order) - You will receive resources" : "Round 1 - Free placement";
+        Label roundLabel = new Label(roundText);
+        roundLabel.setStyle("-fx-text-fill: #eeeeee; -fx-font-size: 12px;");
+        
+        Label instructionLabel = new Label("First, select a VERTEX to place your MVP:");
+        instructionLabel.setStyle("-fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;");
+        
+        // Create a scrollable list of available vertices
+        ListView<String> vertexList = new ListView<>();
+        List<Vertex> availableVertices = new ArrayList<>();
+        
+        for (Vertex v : game.getGameMap().getVertices().values()) {
+            if (!v.isOccupied() && isValidPlacementForInitial(v)) {
+                availableVertices.add(v);
+                String coords = getVertexCoordinates(v);
+                vertexList.getItems().add("Vertex " + v.getId() + " - " + coords);
             }
         }
+        
+        vertexList.setPrefHeight(150);
+        vertexList.setStyle("-fx-control-inner-background: #0f3460; -fx-text-fill: white;");
+        
+        Label selectedVertexLabel = new Label("No vertex selected");
+        selectedVertexLabel.setStyle("-fx-text-fill: #ff9800; -fx-font-size: 12px;");
+        
+        Label edgeInstructionLabel = new Label("Then, select an EDGE connected to your MVP:");
+        edgeInstructionLabel.setStyle("-fx-text-fill: white; -fx-font-size: 14px; -fx-font-weight: bold;");
+        edgeInstructionLabel.setVisible(false);
+        
+        ListView<String> edgeList = new ListView<>();
+        List<Edge> availableEdges = new ArrayList<>();
+        edgeList.setPrefHeight(150);
+        edgeList.setStyle("-fx-control-inner-background: #0f3460; -fx-text-fill: white;");
+        edgeList.setVisible(false);
+        
+        Label selectedEdgeLabel = new Label("No edge selected");
+        selectedEdgeLabel.setStyle("-fx-text-fill: #ff9800; -fx-font-size: 12px;");
+        selectedEdgeLabel.setVisible(false);
+        
+        // Vertex selection handler
+        vertexList.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            if (selected != null) {
+                int vertexId = Integer.parseInt(selected.split(" ")[1]);
+                for (Vertex v : availableVertices) {
+                    if (v.getId() == vertexId) {
+                        selectedPlacementVertex = v;
+                        selectedVertexLabel.setText("Selected: " + selected);
+                        selectedVertexLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-size: 12px;");
+                        
+                        // Now show edges connected to this vertex
+                        availableEdges.clear();
+                        edgeList.getItems().clear();
+                        for (Edge e : game.getGameMap().getVertexEdges(vertexId)) {
+                            if (!e.hasPartnership()) {
+                                availableEdges.add(e);
+                                String edgeInfo = "Edge " + e.getId() + " - between vertices " + e.getVertexA() + " and " + e.getVertexB();
+                                edgeList.getItems().add(edgeInfo);
+                            }
+                        }
+                        
+                        if (availableEdges.isEmpty()) {
+                            edgeList.getItems().add("No available edges connected to this vertex!");
+                        } else {
+                            edgeInstructionLabel.setVisible(true);
+                            edgeList.setVisible(true);
+                            selectedEdgeLabel.setVisible(true);
+                        }
+                        break;
+                    }
+                }
+            }
+        });
+        
+        // Edge selection handler
+        edgeList.getSelectionModel().selectedItemProperty().addListener((obs, old, selected) -> {
+            if (selected != null && !selected.equals("No available edges connected to this vertex!")) {
+                int edgeId = Integer.parseInt(selected.split(" ")[1]);
+                for (Edge e : availableEdges) {
+                    if (e.getId() == edgeId) {
+                        selectedPlacementEdge = e;
+                        selectedEdgeLabel.setText("Selected: " + selected);
+                        selectedEdgeLabel.setStyle("-fx-text-fill: #4CAF50; -fx-font-size: 12px;");
+                        break;
+                    }
+                }
+            }
+        });
+        
+        Button confirmBtn = new Button("Place Structures");
+        confirmBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-size: 14px; -fx-padding: 10px;");
+        confirmBtn.setOnAction(e -> {
+            if (selectedPlacementVertex == null) {
+                showError("Please select a vertex first!");
+                return;
+            }
+            if (selectedPlacementEdge == null) {
+                showError("Please select an edge connected to your vertex!");
+                return;
+            }
+            
+            try {
+                game.setupInitialPlacement(player.getId(), selectedPlacementVertex.getId(), selectedPlacementEdge.getId(), grantResources);
+                placementStage.close();
+                waitingForPlacement = false;
+                selectedPlacementVertex = null;
+                selectedPlacementEdge = null;
+            } catch (Exception ex) {
+                showError("Placement failed: " + ex.getMessage());
+            }
+        });
+        
+        // Show a mini-map for visual reference
+        GridPane miniMap = createMiniMap();
+        miniMap.setAlignment(Pos.CENTER);
+        miniMap.setStyle("-fx-padding: 10px; -fx-background-color: #0f3460; -fx-border-radius: 5px;");
+        
+        mainBox.getChildren().addAll(
+            titleLabel, roundLabel, new Separator(),
+            instructionLabel, vertexList, selectedVertexLabel,
+            edgeInstructionLabel, edgeList, selectedEdgeLabel,
+            new Separator(), miniMap, confirmBtn
+        );
+        
+        ScrollPane scrollPane = new ScrollPane(mainBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background: #1a1a2e;");
+        
+        Scene scene = new Scene(scrollPane, 500, 650);
+        placementStage.setScene(scene);
+        placementStage.showAndWait();
+    }
+
+    private boolean isValidPlacementForInitial(Vertex vertex) {
+        for (Vertex other : game.getGameMap().getVertices().values()) {
+            if (other.isOccupied() && game.getGameMap().distanceInVertices(vertex.getId(), other.getId()) < 2) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private GridPane createMiniMap() {
+        GridPane miniMap = new GridPane();
+        miniMap.setHgap(2);
+        miniMap.setVgap(2);
+        
+        Sector[][] sectors = game.getGameMap().getSectors();
+        for (int row = 0; row < sectors.length; row++) {
+            for (int col = 0; col < sectors[0].length; col++) {
+                Sector sector = sectors[row][col];
+                StackPane cell = new StackPane();
+                cell.setPrefSize(40, 40);
+                cell.setStyle("-fx-border-color: #333; -fx-border-width: 1px;");
+                
+                Color bgColor = getSectorColor(sector.getType());
+                Rectangle bg = new Rectangle(40, 40);
+                bg.setFill(bgColor);
+                
+                Text symbol = new Text(sector.getType().isProductive() ? String.valueOf(sector.getActivationNumber()) : "⚖");
+                symbol.setStyle("-fx-fill: WHITE; -fx-font-size: 12px;");
+                
+                cell.getChildren().addAll(bg, symbol);
+                miniMap.add(cell, col, row);
+            }
+        }
+        return miniMap;
     }
     
     private Vertex findValidVertexForPlacement() {
@@ -1573,7 +1765,7 @@ public class Main extends Application
         title.setStyle("-fx-font-size: 20px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
         
         Label infoLabel = new Label("Each role can only be taken by ONE player. Roles cost -1 point.");
-        infoLabel.setStyle("-fx-fill: #ff9800; -fx-font-size: 12px;");
+        infoLabel.setStyle("-fx-text-fill: #ff9800; -fx-font-size: 12px;");
         
         List<Player> players = game.getPlayers();
         Map<Integer, String> selectedRoleNames = new HashMap<>();
@@ -1600,7 +1792,7 @@ public class Main extends Application
             playerBox.setStyle("-fx-padding: 10px; -fx-border-color: #444; -fx-border-radius: 5px; -fx-background-color: #0f3460;");
             
             Label nameLabel = new Label(player.getName());
-            nameLabel.setStyle("-fx-fill: #ffd700; -fx-font-weight: bold; -fx-font-size: 14px;");
+            nameLabel.setStyle("-fx-text-fill: #ffd700; -fx-font-weight: bold; -fx-font-size: 14px;");
             
             VBox optionsBox = new VBox(5);
             ToggleGroup roleGroup = new ToggleGroup();
@@ -1761,7 +1953,7 @@ public class Main extends Application
         rightPanel.setPrefWidth(350);
         
         currentPlayerLabel = new Label("Current: " + game.getPlayers().get(game.getCurrentPlayerIndex()).getName());
-        currentPlayerLabel.setStyle("-fx-font-size: 16px; -fx-fill: #ffd700; -fx-font-weight: bold;");
+        currentPlayerLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
         
         marketPricesLabel = new Label();
         updateMarketDisplay();
@@ -1871,66 +2063,221 @@ public class Main extends Application
     }
     
     private StackPane createSectorCell(Sector sector, int row, int col) {
-        StackPane cell = new StackPane();
-        cell.setPrefSize(100, 100);
-        cell.setStyle("-fx-border-color: #333; -fx-border-width: 1px; -fx-border-radius: 5px;");
-        
-        Color bgColor = getSectorColor(sector.getType());
-        Rectangle bg = new Rectangle(100, 100);
-        bg.setFill(bgColor);
-        bg.setArcWidth(10);
-        bg.setArcHeight(10);
-        
-        // Inspector indicator
-        if (game.getInspectorSector() == sector) {
-            Rectangle inspectorBadge = new Rectangle(25, 25);
-            inspectorBadge.setFill(Color.RED);
-            inspectorBadge.setArcWidth(5);
-            inspectorBadge.setArcHeight(5);
-            Text inspectorText = new Text("🔍");
-            inspectorText.setStyle("-fx-font-size: 12px;");
-            StackPane inspectorPane = new StackPane(inspectorBadge, inspectorText);
-            StackPane.setAlignment(inspectorPane, Pos.TOP_RIGHT);
-            cell.getChildren().add(inspectorPane);
-        }
-        
-        String displayName = sector.getType().display();
-        String shortName = displayName.length() > 8 ? displayName.substring(0, 8) : displayName;
-        Text typeText = new Text(shortName);
-        typeText.setStyle("-fx-font-size: 9px; -fx-fill: #eeeeee;");
-        
-        Text activationText = new Text(sector.getType().isProductive() ? String.valueOf(sector.getActivationNumber()) : "⚖");
-        activationText.setStyle("-fx-font-size: 18px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
-        
-        // Show company markers on vertices
-        for (Vertex v : game.getGameMap().verticesAround(sector)) {
-            if (v.isOccupied()) {
-                CompanyStructure cs = v.getStructure();
-                String symbol = cs instanceof Unicorn ? "🦄" : "★";
-                Text marker = new Text(symbol);
-                marker.setStyle("-fx-font-size: 16px; -fx-fill: gold;");
-                
-                // Position based on vertex position relative to sector
-                int vertexId = v.getId();
-                if (vertexId % 3 == 0) {
-                    StackPane.setAlignment(marker, Pos.TOP_LEFT);
-                } else if (vertexId % 3 == 1) {
-                    StackPane.setAlignment(marker, Pos.TOP_RIGHT);
-                } else if (vertexId % 3 == 2) {
-                    StackPane.setAlignment(marker, Pos.BOTTOM_LEFT);
-                } else {
-                    StackPane.setAlignment(marker, Pos.BOTTOM_RIGHT);
-                }
-                cell.getChildren().add(marker);
-            }
-        }
-        
-        VBox labels = new VBox(5, activationText, typeText);
-        labels.setAlignment(Pos.CENTER);
-        
-        cell.getChildren().addAll(bg, labels);
-        return cell;
+    StackPane cell = new StackPane();
+    cell.setPrefSize(100, 100);
+    cell.setStyle("-fx-border-color: #333; -fx-border-width: 1px; -fx-border-radius: 5px;");
+    
+    Color bgColor = getSectorColor(sector.getType());
+    Rectangle bg = new Rectangle(100, 100);
+    bg.setFill(bgColor);
+    bg.setArcWidth(10);
+    bg.setArcHeight(10);
+    
+    // Inspector indicator
+    if (game.getInspectorSector() == sector) {
+        Rectangle inspectorBadge = new Rectangle(25, 25);
+        inspectorBadge.setFill(Color.RED);
+        inspectorBadge.setArcWidth(5);
+        inspectorBadge.setArcHeight(5);
+        Text inspectorText = new Text("🔍");
+        inspectorText.setStyle("-fx-font-size: 12px; -fx-fill: WHITE;");
+        StackPane inspectorPane = new StackPane(inspectorBadge, inspectorText);
+        StackPane.setAlignment(inspectorPane, Pos.TOP_RIGHT);
+        cell.getChildren().add(inspectorPane);
     }
+    
+    String displayName = sector.getType().display();
+    String shortName = displayName.length() > 8 ? displayName.substring(0, 8) : displayName;
+    Text typeText = new Text(shortName);
+    typeText.setStyle("-fx-font-size: 9px; -fx-fill: WHITE; -fx-font-weight: bold;");
+    
+    Text activationText = new Text(sector.getType().isProductive() ? String.valueOf(sector.getActivationNumber()) : "⚖");
+    activationText.setStyle("-fx-font-size: 18px; -fx-fill: WHITE; -fx-font-weight: bold;");
+    
+    // Get all vertices around this sector
+    List<Vertex> verticesAround = game.getGameMap().verticesAround(sector);
+    
+    // Define the 4 corner positions (top-left, top-right, bottom-left, bottom-right)
+    // Each corner has an (x, y) offset from the cell's top-left
+    int[][] cornerPositions = {
+        {5, 5},      // Top-left
+        {85, 5},     // Top-right
+        {5, 85},     // Bottom-left
+        {85, 85}     // Bottom-right
+    };
+    
+    // For each vertex, determine which corner it belongs to and create a circle
+    for (Vertex v : verticesAround) {
+        // Determine corner based on which sectors are adjacent
+        // A vertex at top-left of this sector is also adjacent to sectors (row-1, col-1), (row-1, col), (row, col-1)
+        boolean isTopLeft = false;
+        boolean isTopRight = false;
+        boolean isBottomLeft = false;
+        boolean isBottomRight = false;
+        
+        // Get all adjacent sectors for this vertex
+        List<Sector> adjSectors = v.getAdjacentSectors();
+        
+        // Check if this vertex is at the top-left corner of the current sector
+        // Top-left corner vertices are adjacent to this sector, the one above, the one left, and the one above-left
+        boolean hasAbove = false;
+        boolean hasLeft = false;
+        boolean hasAboveLeft = false;
+        
+        for (Sector s : adjSectors) {
+            if (s.getRow() == row - 1 && s.getCol() == col) hasAbove = true;
+            if (s.getRow() == row && s.getCol() == col - 1) hasLeft = true;
+            if (s.getRow() == row - 1 && s.getCol() == col - 1) hasAboveLeft = true;
+        }
+        
+        // Vertex is top-left if it's adjacent to this sector and has the above/left pattern
+        if (adjSectors.contains(sector) && (hasAbove || hasLeft || hasAboveLeft)) {
+            isTopLeft = true;
+        }
+        
+        // Check top-right
+        boolean hasAboveRight = false;
+        boolean hasRight = false;
+        for (Sector s : adjSectors) {
+            if (s.getRow() == row - 1 && s.getCol() == col + 1) hasAboveRight = true;
+            if (s.getRow() == row && s.getCol() == col + 1) hasRight = true;
+        }
+        if (adjSectors.contains(sector) && (hasAboveRight || hasRight)) {
+            isTopRight = true;
+        }
+        
+        // Check bottom-left
+        boolean hasBelowLeft = false;
+        boolean hasBelow = false;
+        for (Sector s : adjSectors) {
+            if (s.getRow() == row + 1 && s.getCol() == col - 1) hasBelowLeft = true;
+            if (s.getRow() == row + 1 && s.getCol() == col) hasBelow = true;
+        }
+        if (adjSectors.contains(sector) && (hasBelowLeft || hasBelow)) {
+            isBottomLeft = true;
+        }
+        
+        // Check bottom-right
+        boolean hasBelowRight = false;
+        boolean hasRightBottom = false;
+        for (Sector s : adjSectors) {
+            if (s.getRow() == row + 1 && s.getCol() == col + 1) hasBelowRight = true;
+            if (s.getRow() == row && s.getCol() == col + 1) hasRightBottom = true;
+        }
+        if (adjSectors.contains(sector) && (hasBelowRight || hasRightBottom)) {
+            isBottomRight = true;
+        }
+        
+        // Also check if this vertex is in the middle of 4 sectors (standard case)
+        // Standard corner detection: vertex is at intersection of 4 sectors
+        boolean hasThis = adjSectors.contains(sector);
+        boolean hasRightSector = false;
+        boolean hasDownSector = false;
+        boolean hasDownRightSector = false;
+        
+        for (Sector s : adjSectors) {
+            if (s.getRow() == row && s.getCol() == col + 1) hasRightSector = true;
+            if (s.getRow() == row + 1 && s.getCol() == col) hasDownSector = true;
+            if (s.getRow() == row + 1 && s.getCol() == col + 1) hasDownRightSector = true;
+        }
+        
+        if (hasThis && hasRightSector && hasDownSector && hasDownRightSector) {
+            // This vertex is at top-left corner of this sector
+            isTopLeft = true;
+        }
+        
+        // Simplified detection: use vertex ID modulo pattern as fallback
+        if (!isTopLeft && !isTopRight && !isBottomLeft && !isBottomRight) {
+            int vertexId = v.getId();
+            if (vertexId % 4 == 0) isTopLeft = true;
+            else if (vertexId % 4 == 1) isTopRight = true;
+            else if (vertexId % 4 == 2) isBottomLeft = true;
+            else isBottomRight = true;
+        }
+        
+        // Create the vertex circle
+        Circle vertexCircle = new Circle(12);
+        vertexCircle.setFill(Color.WHITE);
+        vertexCircle.setStroke(Color.BLACK);
+        vertexCircle.setStrokeWidth(1.5);
+        
+        // Add glow effect if occupied
+        if (v.isOccupied()) {
+            vertexCircle.setFill(Color.GOLD);
+            vertexCircle.setStroke(Color.ORANGE);
+            vertexCircle.setStrokeWidth(2);
+        }
+        
+        // Vertex index label (BLACK text on white circle)
+        Text vertexIndex = new Text(String.valueOf(v.getId()));
+        vertexIndex.setStyle("-fx-font-size: 10px; -fx-fill: BLACK; -fx-font-weight: bold;");
+        
+        StackPane vertexPane = new StackPane(vertexCircle, vertexIndex);
+        
+        // Position the vertex at the correct corner
+        if (isTopLeft) {
+            vertexPane.setLayoutX(cornerPositions[0][0] - 12);
+            vertexPane.setLayoutY(cornerPositions[0][1] - 12);
+        } else if (isTopRight) {
+            vertexPane.setLayoutX(cornerPositions[1][0] - 12);
+            vertexPane.setLayoutY(cornerPositions[1][1] - 12);
+        } else if (isBottomLeft) {
+            vertexPane.setLayoutX(cornerPositions[2][0] - 12);
+            vertexPane.setLayoutY(cornerPositions[2][1] - 12);
+        } else if (isBottomRight) {
+            vertexPane.setLayoutX(cornerPositions[3][0] - 12);
+            vertexPane.setLayoutY(cornerPositions[3][1] - 12);
+        } else {
+            // Default position - top-left
+            vertexPane.setLayoutX(cornerPositions[0][0] - 12);
+            vertexPane.setLayoutY(cornerPositions[0][1] - 12);
+        }
+        
+        // Add click handler for building MVP on vertex
+        final Vertex selectedVertex = v;
+        vertexPane.setOnMouseClicked(event -> {
+            if (!v.isOccupied() && !rollButton.isDisable() && buildMVPButton.isDisable()) {
+                try {
+                    game.buildMVP(game.getCurrentPlayerIndex(), selectedVertex.getId());
+                    updateMapGrid();
+                    updateResourcesDisplay();
+                    updateEventLog();
+                    showInfo("MVP built at vertex " + selectedVertex.getId());
+                } catch (Exception ex) {
+                    showError("Cannot build MVP: " + ex.getMessage());
+                }
+            } else if (v.isOccupied()) {
+                showInfo("Vertex " + v.getId() + " is already occupied by " + 
+                    (v.getStructure() instanceof Unicorn ? "Unicorn" : "MVP"));
+            }
+        });
+        
+        // Add hover effect
+        vertexPane.setOnMouseEntered(event -> {
+            if (!v.isOccupied()) {
+                vertexCircle.setFill(Color.LIGHTYELLOW);
+                vertexCircle.setStroke(Color.GOLD);
+            }
+        });
+        vertexPane.setOnMouseExited(event -> {
+            if (!v.isOccupied()) {
+                vertexCircle.setFill(Color.WHITE);
+                vertexCircle.setStroke(Color.BLACK);
+            } else {
+                vertexCircle.setFill(Color.GOLD);
+                vertexCircle.setStroke(Color.ORANGE);
+            }
+        });
+        
+        cell.getChildren().add(vertexPane);
+    }
+    
+    VBox labels = new VBox(5, activationText, typeText);
+    labels.setAlignment(Pos.CENTER);
+    
+    cell.getChildren().addAll(bg, labels);
+    return cell;
+}
     
     private Color getSectorColor(SectorType type) {
         switch (type) {
@@ -1950,7 +2297,7 @@ public class Main extends Application
             sb.append("  ").append(r.display()).append(": ").append(game.getMarket().priceOf(r)).append("\n");
         }
         marketPricesLabel.setText(sb.toString());
-        marketPricesLabel.setStyle("-fx-fill: #eeeeee;");
+        marketPricesLabel.setStyle("-fx-text-fill: #eeeeee;");
     }
     
     private void updateResourcesDisplay() {
@@ -1960,7 +2307,7 @@ public class Main extends Application
             playerBox.setStyle("-fx-background-color: #0f3460; -fx-padding: 5px; -fx-border-radius: 5px;");
             
             boolean isCurrent = player.getId() == game.getPlayers().get(game.getCurrentPlayerIndex()).getId();
-            String style = isCurrent ? "-fx-fill: #ffd700; -fx-font-weight: bold;" : "-fx-fill: #eeeeee;";
+            String style = isCurrent ? "-fx-text-fill: #ffd700; -fx-font-weight: bold;" : "-fx-text-fill: #eeeeee;";
             
             Label nameLabel = new Label(player.getName() + " (Score: " + player.computeScore() + ")");
             nameLabel.setStyle(style);
@@ -1977,7 +2324,7 @@ public class Main extends Application
             }
             
             Label totalLabel = new Label("Total: " + player.totalCards());
-            totalLabel.setStyle("-fx-fill: #ff9800; -fx-font-size: 10px;");
+            totalLabel.setStyle("-fx-text-fill: #ff9800; -fx-font-size: 10px;");
             
             playerBox.getChildren().addAll(nameLabel, resourcesBox, totalLabel);
             playersResourcesBox.getChildren().add(playerBox);
@@ -2059,10 +2406,10 @@ public class Main extends Application
         taxBox.setStyle("-fx-padding: 20px; -fx-background-color: #1a1a2e;");
         
         Label title = new Label(player.getName() + " - Pay Tax");
-        title.setStyle("-fx-fill: #ffd700; -fx-font-size: 18px;");
+        title.setStyle("-fx-text-fill: #ffd700; -fx-font-size: 18px;");
         
         Label info = new Label("You must return " + amount + " cards to the bank.");
-        info.setStyle("-fx-fill: #eeeeee;");
+        info.setStyle("-fx-text-fill: #eeeeee;");
         
         // Create spinners for each resource type
         Map<Resource, Integer> toReturn = new EnumMap<>(Resource.class);
@@ -2073,7 +2420,7 @@ public class Main extends Application
             if (available > 0) {
                 HBox row = new HBox(10);
                 Label resLabel = new Label(r.display() + " (" + available + "):");
-                resLabel.setStyle("-fx-fill: #eeeeee;");
+                resLabel.setStyle("-fx-text-fill: #eeeeee;");
                 Spinner<Integer> spinner = new Spinner<>(0, available, 0);
                 spinner.setEditable(true);
                 row.getChildren().addAll(resLabel, spinner);
@@ -2119,10 +2466,10 @@ public class Main extends Application
         inspectorBox.setStyle("-fx-padding: 20px; -fx-background-color: #1a1a2e;");
         
         Label title = new Label("Place the Inspector");
-        title.setStyle("-fx-fill: #ffd700; -fx-font-size: 18px;");
+        title.setStyle("-fx-text-fill: #ffd700; -fx-font-size: 18px;");
         
         Label info = new Label("Click on a sector to place the inspector.");
-        info.setStyle("-fx-fill: #eeeeee;");
+        info.setStyle("-fx-text-fill: #eeeeee;");
         
         // Create a mini-map for inspector placement
         GridPane miniMap = new GridPane();
@@ -2357,10 +2704,10 @@ public class Main extends Application
         Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
         
         Label title = new Label("Dynamic Market");
-        title.setStyle("-fx-fill: #ffd700; -fx-font-size: 18px;");
+        title.setStyle("-fx-text-fill: #ffd700; -fx-font-size: 18px;");
         
         Label capitalLabel = new Label("Your Capital: " + current.getResource(Resource.CAPITAL));
-        capitalLabel.setStyle("-fx-fill: #eeeeee;");
+        capitalLabel.setStyle("-fx-text-fill: #eeeeee;");
         
         for (Resource r : Resource.values()) {
             if (r != Resource.CAPITAL) {
@@ -2371,7 +2718,7 @@ public class Main extends Application
                 int have = current.getResource(r);
                 
                 Label info = new Label(r.display() + " - Price: " + price + " (You have: " + have + ")");
-                info.setStyle("-fx-fill: #eeeeee;");
+                info.setStyle("-fx-text-fill: #eeeeee;");
                 
                 Button buyBtn = new Button("Buy");
                 buyBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");

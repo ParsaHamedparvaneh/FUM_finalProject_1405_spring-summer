@@ -1387,6 +1387,7 @@ public class Main extends Application
     private Button buildMVPButton;
     private Button upgradeButton;
     private Button buildPartnershipButton;
+    private Button tradeButton;
     private Button marketButton;
     
     private boolean waitingForCrisisPayment = false;
@@ -1920,6 +1921,11 @@ public class Main extends Application
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: #1a1a2e;");
         
+        tradeButton = new Button("🤝 Trade");
+        tradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 150px;");
+        tradeButton.setOnAction(e -> showPlayerTradeMenu());
+        tradeButton.setDisable(true);
+
         // Menu bar
         MenuBar menuBar = new MenuBar();
         Menu gameMenu = new Menu("Game");
@@ -1968,21 +1974,21 @@ public class Main extends Application
         updateEventLog();
         
         // Buttons
-        rollButton = new Button("🎲 Roll Dice");
+        rollButton = new Button("🎲");
         rollButton.setStyle("-fx-font-size: 14px; -fx-background-color: #2196F3; -fx-text-fill: white; -fx-min-width: 150px;");
         rollButton.setOnAction(e -> rollDice());
         
-        buildMVPButton = new Button("🏗️ Build MVP");
+        buildMVPButton = new Button("🏗️ MVP");
         buildMVPButton.setStyle("-fx-font-size: 14px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 150px;");
         buildMVPButton.setOnAction(e -> showBuildMVPMenu());
         buildMVPButton.setDisable(true);
         
-        upgradeButton = new Button("🦄 Upgrade to Unicorn");
+        upgradeButton = new Button("🦄 Unicorn");
         upgradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #FF9800; -fx-text-fill: white; -fx-min-width: 150px;");
         upgradeButton.setOnAction(e -> showUpgradeMenu());
         upgradeButton.setDisable(true);
         
-        buildPartnershipButton = new Button("🤝 Build Partnership");
+        buildPartnershipButton = new Button("🤝 Partnership");
         buildPartnershipButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 150px;");
         buildPartnershipButton.setOnAction(e -> showBuildPartnershipMenu());
         buildPartnershipButton.setDisable(true);
@@ -1992,12 +1998,13 @@ public class Main extends Application
         marketButton.setOnAction(e -> showMarketMenu());
         marketButton.setDisable(true);
         
-        endTurnButton = new Button("⏭️ End Turn");
+
+        endTurnButton = new Button("⏭️ Next");
         endTurnButton.setStyle("-fx-font-size: 14px; -fx-background-color: #f44336; -fx-text-fill: white; -fx-min-width: 150px;");
         endTurnButton.setOnAction(e -> endTurn());
         endTurnButton.setDisable(true);
-        
-        HBox buttonBox = new HBox(10, rollButton, buildMVPButton, upgradeButton, buildPartnershipButton, marketButton, endTurnButton);
+
+        HBox buttonBox = new HBox(10, rollButton, buildMVPButton, upgradeButton, buildPartnershipButton, marketButton, tradeButton, endTurnButton);
         buttonBox.setAlignment(Pos.CENTER);
         
         rightPanel.getChildren().addAll(
@@ -2760,12 +2767,216 @@ public class Main extends Application
         marketStage.setTitle("Market");
         marketStage.show();
     }
+
+    private void showPlayerTradeMenu() {
+        Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
+        List<Player> others = new ArrayList<>();
+        for (Player p : game.getPlayers()) {
+            if (p.getId() != current.getId()) others.add(p);
+        }
+        if (others.isEmpty()) {
+            showError("No other players to trade with!");
+            return;
+        }
+
+        Stage tradeStage = new Stage();
+        tradeStage.setTitle("Propose Trade");
+
+        VBox mainBox = new VBox(10);
+        mainBox.setAlignment(Pos.CENTER);
+        mainBox.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 20px;");
+
+        Label title = new Label("Propose a Trade");
+        title.setStyle("-fx-font-size: 18px; -fx-text-fill: #ffd700; -fx-font-weight: bold;");
+
+        // Opponent selection
+        Label opponentLabel = new Label("Select opponent:");
+        opponentLabel.setStyle("-fx-text-fill: white;");
+        ComboBox<Player> opponentCombo = new ComboBox<>();
+        opponentCombo.getItems().addAll(others);
+        opponentCombo.setPromptText("Choose player");
+        opponentCombo.setStyle("-fx-text-fill: white; -fx-control-inner-background: #0f3460;");
+
+        // Resources to give
+        Label giveLabel = new Label("Resources YOU give:");
+        giveLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        VBox giveBox = new VBox(5);
+        Map<Resource, Integer> giveResources = new EnumMap<>(Resource.class);
+        for (Resource r : Resource.values()) {
+            int available = current.getResource(r);
+            HBox row = new HBox(10);
+            Label resLabel = new Label(r.display() + (available > 0 ? " (have " + available + "):" : " (have 0):"));
+            resLabel.setStyle(available > 0 ? "-fx-text-fill: white;" : "-fx-text-fill: gray;");
+            Spinner<Integer> spinner = new Spinner<>(0, available, 0);
+            spinner.setEditable(true);
+            if (available == 0) spinner.setDisable(true);
+            row.getChildren().addAll(resLabel, spinner);
+            giveBox.getChildren().add(row);
+            final Resource resource = r;
+            spinner.valueProperty().addListener((obs, old, val) -> giveResources.put(resource, val));
+            giveResources.put(r, 0);
+        }
+
+        // Resources to receive
+        Label receiveLabel = new Label("Resources YOU receive:");
+        receiveLabel.setStyle("-fx-text-fill: white; -fx-font-weight: bold;");
+        VBox receiveBox = new VBox(5);
+        Map<Resource, Integer> receiveResources = new EnumMap<>(Resource.class);
+        for (Resource r : Resource.values()) {
+            HBox row = new HBox(10);
+            Label resLabel = new Label(r.display() + ":");
+            resLabel.setStyle("-fx-text-fill: white;");
+            Spinner<Integer> spinner = new Spinner<>(0, 99, 0);
+            spinner.setEditable(true);
+            row.getChildren().addAll(resLabel, spinner);
+            receiveBox.getChildren().add(row);
+            final Resource resource = r;
+            spinner.valueProperty().addListener((obs, old, val) -> receiveResources.put(resource, val));
+            receiveResources.put(r, 0);
+        }
+
+        Button proposeBtn = new Button("Propose Trade");
+        proposeBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white; -fx-font-size: 14px;");
+        proposeBtn.setOnAction(e -> {
+            Player opponent = opponentCombo.getValue();
+            if (opponent == null) {
+                showError("Please select an opponent!");
+                return;
+            }
+            // Check proposer has enough to give
+            for (Map.Entry<Resource, Integer> entry : giveResources.entrySet()) {
+                if (entry.getValue() > 0 && current.getResource(entry.getKey()) < entry.getValue()) {
+                    showError("You don't have enough " + entry.getKey().display() + "!");
+                    return;
+                }
+            }
+            tradeStage.close();
+            showTradeProposal(current, opponent, giveResources, receiveResources);
+        });
+
+        mainBox.getChildren().addAll(title, opponentLabel, opponentCombo,
+                new Separator(), giveLabel, giveBox,
+                new Separator(), receiveLabel, receiveBox,
+                proposeBtn);
+
+        ScrollPane scrollPane = new ScrollPane(mainBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background: #1a1a2e;");
+        Scene scene = new Scene(scrollPane, 500, 600);
+        tradeStage.setScene(scene);
+        tradeStage.show();
+    }
+
+    private void showTradeProposal(Player proposer, Player opponent,
+                                Map<Resource, Integer> give,
+                                Map<Resource, Integer> receive) {
+        Stage proposalStage = new Stage();
+        proposalStage.setTitle("Trade Proposal");
+
+        VBox mainBox = new VBox(10);
+        mainBox.setAlignment(Pos.CENTER);
+        mainBox.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 20px;");
+
+        Label title = new Label("Trade Proposal");
+        title.setStyle("-fx-font-size: 18px; -fx-text-fill: #ffd700; -fx-font-weight: bold;");
+
+        Label info = new Label(proposer.getName() + " wants to trade with " + opponent.getName());
+        info.setStyle("-fx-text-fill: white;");
+
+        // What proposer gives
+        Label giveTitle = new Label(proposer.getName() + " gives:");
+        giveTitle.setStyle("-fx-text-fill: #ff9800; -fx-font-weight: bold;");
+        StringBuilder giveText = new StringBuilder();
+        for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
+            if (entry.getValue() > 0) giveText.append("  • ").append(entry.getValue()).append(" ").append(entry.getKey().display()).append("\n");
+        }
+        Label giveLabel = new Label(giveText.length() > 0 ? giveText.toString() : "  Nothing");
+        giveLabel.setStyle("-fx-text-fill: white;");
+
+        // What proposer receives
+        Label receiveTitle = new Label(proposer.getName() + " receives:");
+        receiveTitle.setStyle("-fx-text-fill: #ff9800; -fx-font-weight: bold;");
+        StringBuilder receiveText = new StringBuilder();
+        for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+            if (entry.getValue() > 0) receiveText.append("  • ").append(entry.getValue()).append(" ").append(entry.getKey().display()).append("\n");
+        }
+        Label receiveLabel = new Label(receiveText.length() > 0 ? receiveText.toString() : "  Nothing");
+        receiveLabel.setStyle("-fx-text-fill: white;");
+
+        // Check if opponent has enough resources to give
+        boolean opponentCanGive = true;
+        StringBuilder insufficient = new StringBuilder();
+        for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+            if (entry.getValue() > 0 && opponent.getResource(entry.getKey()) < entry.getValue()) {
+                opponentCanGive = false;
+                insufficient.append("  • ").append(entry.getKey().display()).append(" (needs ").append(entry.getValue())
+                        .append(", has ").append(opponent.getResource(entry.getKey())).append(")\n");
+            }
+        }
+
+        if (!opponentCanGive) {
+            Label errorLabel = new Label("Opponent does not have enough resources to give:\n" + insufficient.toString());
+            errorLabel.setStyle("-fx-text-fill: #f44336;");
+            mainBox.getChildren().addAll(title, info, errorLabel);
+            Button okBtn = new Button("OK");
+            okBtn.setOnAction(ev -> proposalStage.close());
+            mainBox.getChildren().add(okBtn);
+            Scene scene = new Scene(mainBox, 450, 400);
+            proposalStage.setScene(scene);
+            proposalStage.showAndWait();
+            return;
+        }
+
+        // Ask opponent to accept or reject
+        Label askLabel = new Label(opponent.getName() + ", do you accept this trade?");
+        askLabel.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+
+        Button acceptBtn = new Button("Accept");
+        acceptBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        acceptBtn.setOnAction(ev -> {
+            // Execute trade
+            for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
+                if (entry.getValue() > 0) {
+                    proposer.removeResource(entry.getKey(), entry.getValue());
+                    opponent.addResource(entry.getKey(), entry.getValue());
+                }
+            }
+            for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+                if (entry.getValue() > 0) {
+                    opponent.removeResource(entry.getKey(), entry.getValue());
+                    proposer.addResource(entry.getKey(), entry.getValue());
+                }
+            }
+            game.getEventLog().add(proposer.getName() + " traded with " + opponent.getName());
+            updateResourcesDisplay();
+            updateEventLog();
+            showInfo("Trade completed!");
+            proposalStage.close();
+        });
+
+        Button rejectBtn = new Button("Reject");
+        rejectBtn.setStyle("-fx-background-color: #f44336; -fx-text-fill: white;");
+        rejectBtn.setOnAction(ev -> {
+            showInfo("Trade rejected by " + opponent.getName());
+            proposalStage.close();
+        });
+
+        HBox buttonBox = new HBox(20, acceptBtn, rejectBtn);
+        buttonBox.setAlignment(Pos.CENTER);
+
+        mainBox.getChildren().addAll(title, info, giveTitle, giveLabel, receiveTitle, receiveLabel, askLabel, buttonBox);
+
+        Scene scene = new Scene(mainBox, 500, 500);
+        proposalStage.setScene(scene);
+        proposalStage.showAndWait();
+    }
     
     private void enableActionButtons(boolean enabled) {
         buildMVPButton.setDisable(!enabled);
         upgradeButton.setDisable(!enabled);
         buildPartnershipButton.setDisable(!enabled);
         marketButton.setDisable(!enabled);
+        tradeButton.setDisable(!enabled);
         endTurnButton.setDisable(!enabled);
     }
     
