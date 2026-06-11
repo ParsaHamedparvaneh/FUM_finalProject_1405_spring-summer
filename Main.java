@@ -1574,20 +1574,29 @@ public class Main extends Application
         Text title = new Text("Select Founder Roles (Optional)");
         title.setStyle("-fx-font-size: 20px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
         
-        Label infoLabel = new Label("Each role can only be taken by one player. Roles cost -1 point.");
+        Label infoLabel = new Label("Each role can only be taken by ONE player. Roles cost -1 point.");
         infoLabel.setStyle("-fx-fill: #ff9800; -fx-font-size: 12px;");
         
         List<Player> players = game.getPlayers();
         Map<Integer, FounderRole> selectedRoles = new HashMap<>();
+        
+        // Track available roles
         List<FounderRole> availableRoles = new ArrayList<>(Arrays.asList(
             FounderRole.CEO_HACKER, FounderRole.TECH_GURU, FounderRole.VC_FUNDED
         ));
         
-        for (Player player : players) {
+        // Store combo boxes for later updates
+        List<ComboBox<String>> roleComboBoxes = new ArrayList<>();
+        List<TextArea> descAreas = new ArrayList<>();
+        List<Player> playerList = players;
+        
+        for (int idx = 0; idx < players.size(); idx++) {
+            Player player = players.get(idx);
             VBox playerBox = new VBox(5);
-            playerBox.setStyle("-fx-padding: 5px; -fx-border-color: #444; -fx-border-radius: 5px;");
+            playerBox.setStyle("-fx-padding: 10px; -fx-border-color: #444; -fx-border-radius: 5px; -fx-background-color: #0f3460;");
+            
             Label nameLabel = new Label(player.getName());
-            nameLabel.setStyle("-fx-fill: #eeeeee; -fx-font-weight: bold;");
+            nameLabel.setStyle("-fx-fill: #ffd700; -fx-font-weight: bold; -fx-font-size: 14px;");
             
             ComboBox<String> roleCombo = new ComboBox<>();
             roleCombo.getItems().add("No Role");
@@ -1595,36 +1604,114 @@ public class Main extends Application
                 roleCombo.getItems().add(r.display());
             }
             roleCombo.setValue("No Role");
-            roleCombo.setStyle("-fx-font-size: 12px;");
+            roleCombo.setStyle("-fx-font-size: 12px; -fx-min-width: 180px;");
             
-            // Description area
             TextArea descArea = new TextArea();
             descArea.setEditable(false);
             descArea.setPrefHeight(50);
-            descArea.setStyle("-fx-control-inner-background: #0f3460; -fx-text-fill: #eeeeee;");
+            descArea.setStyle("-fx-control-inner-background: #1a1a2e; -fx-text-fill: #cccccc;");
             descArea.setText("No special abilities");
+            
+            final int playerIndex = idx;
+            roleComboBoxes.add(roleCombo);
+            descAreas.add(descArea);
             
             roleCombo.setOnAction(e -> {
                 String selected = roleCombo.getValue();
-                if (selected.equals("CEO Hacker")) {
-                    descArea.setText("Trades at 3:1 rate instead of 4:1");
-                } else if (selected.equals("Tech Guru (CTO)")) {
-                    descArea.setText("Upgrades MVP using 1 less Cloud resource");
-                } else if (selected.equals("VC-Funded")) {
-                    descArea.setText("Starts with +2 Capital, holds 9 cards before tax");
-                } else {
+                
+                // If previously had a role, add it back to available
+                FounderRole oldRole = selectedRoles.get(player.getId());
+                if (oldRole != null && oldRole != FounderRole.NONE) {
+                    availableRoles.add(oldRole);
+                }
+                
+                if (selected.equals("No Role")) {
+                    selectedRoles.put(player.getId(), FounderRole.NONE);
                     descArea.setText("No special abilities");
+                } else {
+                    // Find which role was selected
+                    FounderRole newRole = null;
+                    for (FounderRole r : FounderRole.values()) {
+                        if (r.display().equals(selected)) {
+                            newRole = r;
+                            break;
+                        }
+                    }
+                    
+                    if (newRole != null && availableRoles.contains(newRole)) {
+                        availableRoles.remove(newRole);
+                        selectedRoles.put(player.getId(), newRole);
+                        
+                        // Update description
+                        switch (newRole) {
+                            case CEO_HACKER:
+                                descArea.setText("Trades at 3:1 rate instead of 4:1\nUnicorn upgrade costs 1 less Cloud");
+                                break;
+                            case TECH_GURU:
+                                descArea.setText("Starts with +2 Capital\nHolds 9 cards before tax (instead of 7)");
+                                break;
+                            case VC_FUNDED:
+                                descArea.setText("+2 starting Capital\nCard limit increased to 9 during crisis");
+                                break;
+                            default:
+                                descArea.setText("No special abilities");
+                        }
+                    } else {
+                        // Role not available - revert
+                        showError("This role is already taken by another player!");
+                        roleCombo.setValue("No Role");
+                        selectedRoles.put(player.getId(), FounderRole.NONE);
+                        descArea.setText("No special abilities");
+                    }
+                }
+                
+                // Update all combo boxes to show only available roles
+                for (int i = 0; i < playerList.size(); i++) {
+                    Player p = playerList.get(i);
+                    ComboBox<String> cb = roleComboBoxes.get(i);
+                    String currentSelection = cb.getValue();
+                    
+                    cb.getItems().clear();
+                    cb.getItems().add("No Role");
+                    
+                    // Add available roles
+                    for (FounderRole r : availableRoles) {
+                        cb.getItems().add(r.display());
+                    }
+                    
+                    // Add the player's currently selected role if they have one
+                    FounderRole playerRole = selectedRoles.get(p.getId());
+                    if (playerRole != null && playerRole != FounderRole.NONE && !availableRoles.contains(playerRole)) {
+                        cb.getItems().add(playerRole.display());
+                    }
+                    
+                    // Restore selection
+                    if (playerRole != null && playerRole != FounderRole.NONE) {
+                        cb.setValue(playerRole.display());
+                    } else {
+                        cb.setValue("No Role");
+                    }
                 }
             });
             
             playerBox.getChildren().addAll(nameLabel, roleCombo, descArea);
             roleBox.getChildren().add(playerBox);
-            selectedRoles.put(player.getId(), null);
+            selectedRoles.put(player.getId(), FounderRole.NONE);
         }
         
         Button confirmBtn = new Button("Start Game");
-        confirmBtn.setStyle("-fx-font-size: 16px; -fx-background-color: #4CAF50; -fx-text-fill: white;");
+        confirmBtn.setStyle("-fx-font-size: 16px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 150px; -fx-padding: 10px;");
         confirmBtn.setOnAction(e -> {
+            // Apply selected roles
+            for (Map.Entry<Integer, FounderRole> entry : selectedRoles.entrySet()) {
+                if (entry.getValue() != null && entry.getValue() != FounderRole.NONE) {
+                    try {
+                        game.assignRole(entry.getKey(), entry.getValue());
+                    } catch (Exception ex) {
+                        showError("Failed to assign role: " + ex.getMessage());
+                    }
+                }
+            }
             roleStage.close();
             showGameUI();
         });
@@ -1633,11 +1720,11 @@ public class Main extends Application
         
         ScrollPane scrollPane = new ScrollPane(roleBox);
         scrollPane.setFitToWidth(true);
-        scrollPane.setStyle("-fx-background: #1a1a2e;");
+        scrollPane.setStyle("-fx-background: #1a1a2e; -fx-background-color: #1a1a2e;");
         
-        Scene scene = new Scene(scrollPane, 500, 500);
+        Scene scene = new Scene(scrollPane, 550, 550);
         roleStage.setScene(scene);
-        roleStage.setTitle("Select Roles");
+        roleStage.setTitle("Select Founder Roles");
         roleStage.show();
     }
     
@@ -2108,23 +2195,33 @@ public class Main extends Application
             return;
         }
         
-        ChoiceDialog<Vertex> dialog = new ChoiceDialog<>(availableVertices.get(0), availableVertices);
-        dialog.setTitle("Build MVP");
-        dialog.setHeaderText("Select a vertex (Cost: 1 Capital, 1 Talent, 1 Cloud, 1 Data)");
-        dialog.setContentText("Vertices:");
+        // Create readable labels for vertices
+        Map<String, Vertex> vertexLabels = new LinkedHashMap<>();
+        for (Vertex v : availableVertices) {
+            // Find coordinates of this vertex (around which sectors)
+            String coords = getVertexCoordinates(v);
+            vertexLabels.put("Vertex " + v.getId() + " " + coords, v);
+        }
         
-        dialog.showAndWait().ifPresent(vertex -> {
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(vertexLabels.keySet().iterator().next(), vertexLabels.keySet());
+        dialog.setTitle("Build MVP");
+        dialog.setHeaderText("Select a vertex location\nCost: 1 Capital, 1 Talent, 1 Cloud, 1 Data");
+        dialog.setContentText("Choose vertex:");
+        
+        dialog.showAndWait().ifPresent(selected -> {
+            Vertex vertex = vertexLabels.get(selected);
             try {
                 game.buildMVP(game.getCurrentPlayerIndex(), vertex.getId());
                 updateMapGrid();
                 updateResourcesDisplay();
                 updateEventLog();
+                showInfo("MVP built successfully at " + selected);
             } catch (Exception ex) {
                 showError("Cannot build MVP: " + ex.getMessage());
             }
         });
     }
-    
+
     private void showUpgradeMenu() {
         Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
         List<Vertex> upgradableVertices = new ArrayList<>();
@@ -2140,23 +2237,32 @@ public class Main extends Application
             return;
         }
         
-        ChoiceDialog<Vertex> dialog = new ChoiceDialog<>(upgradableVertices.get(0), upgradableVertices);
-        dialog.setTitle("Upgrade to Unicorn");
-        dialog.setHeaderText("Select an MVP to upgrade (Cost: 3 Data, 2 Cloud)");
-        dialog.setContentText("MVPs:");
+        // Create readable labels for vertices
+        Map<String, Vertex> vertexLabels = new LinkedHashMap<>();
+        for (Vertex v : upgradableVertices) {
+            String coords = getVertexCoordinates(v);
+            vertexLabels.put("MVP at " + coords + " (Vertex " + v.getId() + ")", v);
+        }
         
-        dialog.showAndWait().ifPresent(vertex -> {
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(vertexLabels.keySet().iterator().next(), vertexLabels.keySet());
+        dialog.setTitle("Upgrade to Unicorn");
+        dialog.setHeaderText("Select an MVP to upgrade\nCost: 3 Data, 2 Cloud");
+        dialog.setContentText("Choose MVP:");
+        
+        dialog.showAndWait().ifPresent(selected -> {
+            Vertex vertex = vertexLabels.get(selected);
             try {
                 game.upgradeToUnicorn(game.getCurrentPlayerIndex(), vertex.getId());
                 updateMapGrid();
                 updateResourcesDisplay();
                 updateEventLog();
+                showInfo("MVP upgraded to Unicorn at " + selected);
             } catch (Exception ex) {
                 showError("Cannot upgrade: " + ex.getMessage());
             }
         });
     }
-    
+
     private void showBuildPartnershipMenu() {
         Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
         List<Edge> availableEdges = new ArrayList<>();
@@ -2174,21 +2280,63 @@ public class Main extends Application
             return;
         }
         
-        ChoiceDialog<Edge> dialog = new ChoiceDialog<>(availableEdges.get(0), availableEdges);
-        dialog.setTitle("Build Partnership");
-        dialog.setHeaderText("Select an edge (Cost: 1 Capital, 1 Patent)");
-        dialog.setContentText("Edges:");
+        // Create readable labels for edges
+        Map<String, Edge> edgeLabels = new LinkedHashMap<>();
+        for (Edge e : availableEdges) {
+            String coords = getEdgeCoordinates(e);
+            edgeLabels.put("Edge " + e.getId() + " " + coords, e);
+        }
         
-        dialog.showAndWait().ifPresent(edge -> {
+        ChoiceDialog<String> dialog = new ChoiceDialog<>(edgeLabels.keySet().iterator().next(), edgeLabels.keySet());
+        dialog.setTitle("Build Partnership");
+        dialog.setHeaderText("Select an edge location\nCost: 1 Capital, 1 Patent");
+        dialog.setContentText("Choose edge:");
+        
+        dialog.showAndWait().ifPresent(selected -> {
+            Edge edge = edgeLabels.get(selected);
             try {
                 game.buildPartnership(game.getCurrentPlayerIndex(), edge.getId());
                 updateMapGrid();
                 updateResourcesDisplay();
                 updateEventLog();
+                showInfo("Partnership built successfully at " + selected);
             } catch (Exception ex) {
                 showError("Cannot build Partnership: " + ex.getMessage());
             }
         });
+    }
+
+    // Helper method to get readable vertex coordinates
+    private String getVertexCoordinates(Vertex vertex) {
+        // Find the sectors around this vertex to determine position
+        List<Sector> adjacent = vertex.getAdjacentSectors();
+        if (adjacent.isEmpty()) return "(unknown location)";
+        
+        // Get min row and col from adjacent sectors
+        int minRow = Integer.MAX_VALUE;
+        int minCol = Integer.MAX_VALUE;
+        for (Sector s : adjacent) {
+            minRow = Math.min(minRow, s.getRow());
+            minCol = Math.min(minCol, s.getCol());
+        }
+        return "(between sectors " + minRow + "," + minCol + " and " + (minRow+1) + "," + (minCol+1) + ")";
+    }
+
+    // Helper method to get readable edge coordinates
+    private String getEdgeCoordinates(Edge edge) {
+        int vA = edge.getVertexA();
+        int vB = edge.getVertexB();
+        
+        // Try to find sectors adjacent to this edge
+        Vertex vertexA = game.getGameMap().getVertices().get(vA);
+        if (vertexA == null) return "(unknown edge)";
+        
+        List<Sector> sectors = vertexA.getAdjacentSectors();
+        if (!sectors.isEmpty()) {
+            Sector s = sectors.get(0);
+            return "(between sectors at " + s.getRow() + "," + s.getCol() + ")";
+        }
+        return "(edge between vertices " + vA + " and " + vB + ")";
     }
     
     private boolean isConnectedToPlayer(Player player, Edge edge) {
