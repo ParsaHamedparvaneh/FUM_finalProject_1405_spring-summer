@@ -1920,11 +1920,6 @@ public class Main extends Application
     private void showGameUI() {
         BorderPane root = new BorderPane();
         root.setStyle("-fx-background-color: #1a1a2e;");
-        
-        tradeButton = new Button("🤝 Trade");
-        tradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 150px;");
-        tradeButton.setOnAction(e -> showPlayerTradeMenu());
-        tradeButton.setDisable(true);
 
         // Menu bar
         MenuBar menuBar = new MenuBar();
@@ -1956,7 +1951,7 @@ public class Main extends Application
         // Right panel
         rightPanel = new VBox(10);
         rightPanel.setStyle("-fx-background-color: #16213e; -fx-padding: 15px;");
-        rightPanel.setPrefWidth(350);
+        rightPanel.setPrefWidth(50);
         
         currentPlayerLabel = new Label("Current: " + game.getPlayers().get(game.getCurrentPlayerIndex()).getName());
         currentPlayerLabel.setStyle("-fx-font-size: 16px; -fx-text-fill: #ffffff; -fx-font-weight: bold;");
@@ -1975,32 +1970,36 @@ public class Main extends Application
         
         // Buttons
         rollButton = new Button("🎲");
-        rollButton.setStyle("-fx-font-size: 14px; -fx-background-color: #2196F3; -fx-text-fill: white; -fx-min-width: 150px;");
+        rollButton.setStyle("-fx-font-size: 14px; -fx-background-color: #2196F3; -fx-text-fill: white; -fx-min-width: 50px;");
         rollButton.setOnAction(e -> rollDice());
         
         buildMVPButton = new Button("🏗️ MVP");
-        buildMVPButton.setStyle("-fx-font-size: 14px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 150px;");
+        buildMVPButton.setStyle("-fx-font-size: 14px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 120px;");
         buildMVPButton.setOnAction(e -> showBuildMVPMenu());
         buildMVPButton.setDisable(true);
         
         upgradeButton = new Button("🦄 Unicorn");
-        upgradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #FF9800; -fx-text-fill: white; -fx-min-width: 150px;");
+        upgradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #FF9800; -fx-text-fill: white; -fx-min-width: 120px;");
         upgradeButton.setOnAction(e -> showUpgradeMenu());
         upgradeButton.setDisable(true);
         
         buildPartnershipButton = new Button("🤝 Partnership");
-        buildPartnershipButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 150px;");
+        buildPartnershipButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 120px;");
         buildPartnershipButton.setOnAction(e -> showBuildPartnershipMenu());
         buildPartnershipButton.setDisable(true);
         
         marketButton = new Button("💰 Market");
-        marketButton.setStyle("-fx-font-size: 14px; -fx-background-color: #009688; -fx-text-fill: white; -fx-min-width: 150px;");
+        marketButton.setStyle("-fx-font-size: 14px; -fx-background-color: #009688; -fx-text-fill: white; -fx-min-width: 120px;");
         marketButton.setOnAction(e -> showMarketMenu());
         marketButton.setDisable(true);
         
+        tradeButton = new Button("🤝 Trade");
+        tradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 120px;");
+        tradeButton.setOnAction(e -> showPlayerTradeMenu());
+        tradeButton.setDisable(true);
 
-        endTurnButton = new Button("⏭️ Next");
-        endTurnButton.setStyle("-fx-font-size: 14px; -fx-background-color: #f44336; -fx-text-fill: white; -fx-min-width: 150px;");
+        endTurnButton = new Button("⏭️");
+        endTurnButton.setStyle("-fx-font-size: 14px; -fx-background-color: #f44336; -fx-text-fill: white; -fx-min-width: 50px;");
         endTurnButton.setOnAction(e -> endTurn());
         endTurnButton.setDisable(true);
 
