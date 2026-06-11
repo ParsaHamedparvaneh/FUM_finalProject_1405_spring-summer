@@ -2297,7 +2297,7 @@ public class Main extends Application
             sb.append("  ").append(r.display()).append(": ").append(game.getMarket().priceOf(r)).append("\n");
         }
         marketPricesLabel.setText(sb.toString());
-        marketPricesLabel.setStyle("-fx-fill: #eeeeee;");
+        marketPricesLabel.setStyle("-fx-text-fill: #eeeeee;");
     }
     
     private void updateResourcesDisplay() {
