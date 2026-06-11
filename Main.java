@@ -1576,18 +1576,24 @@ public class Main extends Application
         infoLabel.setStyle("-fx-fill: #ff9800; -fx-font-size: 12px;");
         
         List<Player> players = game.getPlayers();
-        Map<Integer, FounderRole> selectedRoles = new HashMap<>();
+        Map<Integer, String> selectedRoleNames = new HashMap<>();
         
-        // Track available roles
-        List<FounderRole> availableRoles = new ArrayList<>(Arrays.asList(
-            FounderRole.CEO_HACKER, FounderRole.TECH_GURU, FounderRole.VC_FUNDED
-        ));
+        // Create role selection for each player using RadioButtons (no recursion issues)
+        VBox playersBox = new VBox(10);
         
-        // Store combo boxes for later updates
-        List<ComboBox<String>> roleComboBoxes = new ArrayList<>();
-        List<TextArea> descAreas = new ArrayList<>();
-        List<Player> playerList = players;
+        // Define available roles
+        String[] roleOptions = {"No Role", "CEO Hacker", "Tech Guru (CTO)", "VC-Funded"};
+        String[] roleDescriptions = {
+            "No special abilities",
+            "Trades at 3:1 rate instead of 4:1\nUnicorn upgrade costs 1 less Cloud",
+            "Starts with +2 Capital\nHolds 9 cards before tax (instead of 7)",
+            "+2 starting Capital\nCard limit increased to 9 during crisis"
+        };
         
+        // Track which roles are taken
+        Set<String> takenRoles = new HashSet<>();
+        
+        // Create a panel for each player
         for (int idx = 0; idx < players.size(); idx++) {
             Player player = players.get(idx);
             VBox playerBox = new VBox(5);
@@ -1596,113 +1602,107 @@ public class Main extends Application
             Label nameLabel = new Label(player.getName());
             nameLabel.setStyle("-fx-fill: #ffd700; -fx-font-weight: bold; -fx-font-size: 14px;");
             
-            ComboBox<String> roleCombo = new ComboBox<>();
-            roleCombo.getItems().add("No Role");
-            for (FounderRole r : availableRoles) {
-                roleCombo.getItems().add(r.display());
-            }
-            roleCombo.setValue("No Role");
-            roleCombo.setStyle("-fx-font-size: 12px; -fx-min-width: 180px;");
+            VBox optionsBox = new VBox(5);
+            ToggleGroup roleGroup = new ToggleGroup();
             
+            // Store radio buttons for this player
+            List<RadioButton> radioButtons = new ArrayList<>();
+            
+            for (int i = 0; i < roleOptions.length; i++) {
+                String roleName = roleOptions[i];
+                RadioButton rb = new RadioButton(roleName);
+                rb.setStyle("-fx-text-fill: #eeeeee;");
+                rb.setToggleGroup(roleGroup);
+                
+                final int playerId = player.getId();
+                final String selectedRole = roleName;
+                
+                rb.setOnAction(e -> {
+                    if (rb.isSelected()) {
+                        // Check if role is already taken (except "No Role")
+                        if (!selectedRole.equals("No Role") && takenRoles.contains(selectedRole)) {
+                            showError("Role '" + selectedRole + "' is already taken by another player!");
+                            // Select "No Role" instead
+                            for (RadioButton r : radioButtons) {
+                                if (r.getText().equals("No Role")) {
+                                    r.setSelected(true);
+                                    break;
+                                }
+                            }
+                            selectedRoleNames.put(playerId, "No Role");
+                        } else {
+                            // Remove old role from taken set
+                            String oldRole = selectedRoleNames.get(playerId);
+                            if (oldRole != null && !oldRole.equals("No Role")) {
+                                takenRoles.remove(oldRole);
+                            }
+                            // Add new role to taken set
+                            if (!selectedRole.equals("No Role")) {
+                                takenRoles.add(selectedRole);
+                            }
+                            selectedRoleNames.put(playerId, selectedRole);
+                        }
+                    }
+                });
+                
+                radioButtons.add(rb);
+                optionsBox.getChildren().add(rb);
+            }
+            
+            // Set default selection
+            radioButtons.get(0).setSelected(true);
+            selectedRoleNames.put(player.getId(), "No Role");
+            
+            // Add description area
             TextArea descArea = new TextArea();
             descArea.setEditable(false);
-            descArea.setPrefHeight(50);
+            descArea.setPrefHeight(60);
             descArea.setStyle("-fx-control-inner-background: #1a1a2e; -fx-text-fill: #cccccc;");
-            descArea.setText("No special abilities");
+            descArea.setText(roleDescriptions[0]);
             
-            roleComboBoxes.add(roleCombo);
-            descAreas.add(descArea);
-            
-            roleCombo.setOnAction(e -> {
-                String selected = roleCombo.getValue();
-                
-                // If previously had a role, add it back to available
-                FounderRole oldRole = selectedRoles.get(player.getId());
-                if (oldRole != null && oldRole != FounderRole.NONE) {
-                    availableRoles.add(oldRole);
-                }
-                
-                if (selected.equals("No Role")) {
-                    selectedRoles.put(player.getId(), FounderRole.NONE);
-                    descArea.setText("No special abilities");
-                } else {
-                    // Find which role was selected
-                    FounderRole newRole = null;
-                    for (FounderRole r : FounderRole.values()) {
-                        if (r.display().equals(selected)) {
-                            newRole = r;
+            // Add listener to update description
+            roleGroup.selectedToggleProperty().addListener((obs, oldVal, newVal) -> {
+                if (newVal != null) {
+                    RadioButton selected = (RadioButton) newVal;
+                    for (int i = 0; i < roleOptions.length; i++) {
+                        if (selected.getText().equals(roleOptions[i])) {
+                            descArea.setText(roleDescriptions[i]);
                             break;
                         }
-                    }
-                    
-                    if (newRole != null && availableRoles.contains(newRole)) {
-                        availableRoles.remove(newRole);
-                        selectedRoles.put(player.getId(), newRole);
-                        
-                        // Update description
-                        switch (newRole) {
-                            case CEO_HACKER:
-                                descArea.setText("Trades at 3:1 rate instead of 4:1\nUnicorn upgrade costs 1 less Cloud");
-                                break;
-                            case TECH_GURU:
-                                descArea.setText("Starts with +2 Capital\nHolds 9 cards before tax (instead of 7)");
-                                break;
-                            case VC_FUNDED:
-                                descArea.setText("+2 starting Capital\nCard limit increased to 9 during crisis");
-                                break;
-                            default:
-                                descArea.setText("No special abilities");
-                        }
-                    } else {
-                        // Role not available - revert
-                        showError("This role is already taken by another player!");
-                        roleCombo.setValue("No Role");
-                        selectedRoles.put(player.getId(), FounderRole.NONE);
-                        descArea.setText("No special abilities");
-                    }
-                }
-                
-                // Update all combo boxes to show only available roles
-                for (int i = 0; i < playerList.size(); i++) {
-                    Player p = playerList.get(i);
-                    ComboBox<String> cb = roleComboBoxes.get(i);
-                    
-                    cb.getItems().clear();
-                    cb.getItems().add("No Role");
-                    
-                    // Add available roles
-                    for (FounderRole r : availableRoles) {
-                        cb.getItems().add(r.display());
-                    }
-                    
-                    // Add the player's currently selected role if they have one
-                    FounderRole playerRole = selectedRoles.get(p.getId());
-                    if (playerRole != null && playerRole != FounderRole.NONE && !availableRoles.contains(playerRole)) {
-                        cb.getItems().add(playerRole.display());
-                    }
-                    
-                    // Restore selection
-                    if (playerRole != null && playerRole != FounderRole.NONE) {
-                        cb.setValue(playerRole.display());
-                    } else {
-                        cb.setValue("No Role");
                     }
                 }
             });
             
-            playerBox.getChildren().addAll(nameLabel, roleCombo, descArea);
-            roleBox.getChildren().add(playerBox);
-            selectedRoles.put(player.getId(), FounderRole.NONE);
+            playerBox.getChildren().addAll(nameLabel, optionsBox, descArea);
+            playersBox.getChildren().add(playerBox);
         }
         
         Button confirmBtn = new Button("Start Game");
         confirmBtn.setStyle("-fx-font-size: 16px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 150px; -fx-padding: 10px;");
         confirmBtn.setOnAction(e -> {
             // Apply selected roles
-            for (Map.Entry<Integer, FounderRole> entry : selectedRoles.entrySet()) {
-                if (entry.getValue() != null && entry.getValue() != FounderRole.NONE) {
+            for (Map.Entry<Integer, String> entry : selectedRoleNames.entrySet()) {
+                String roleName = entry.getValue();
+                if (roleName != null && !roleName.equals("No Role")) {
                     try {
-                        game.assignRole(entry.getKey(), entry.getValue());
+                        // Convert display name to FounderRole enum
+                        FounderRole role;
+                        switch (roleName) {
+                            case "CEO Hacker":
+                                role = FounderRole.CEO_HACKER;
+                                break;
+                            case "Tech Guru (CTO)":
+                                role = FounderRole.TECH_GURU;
+                                break;
+                            case "VC-Funded":
+                                role = FounderRole.VC_FUNDED;
+                                break;
+                            default:
+                                role = FounderRole.NONE;
+                        }
+                        if (role != FounderRole.NONE) {
+                            game.assignRole(entry.getKey(), role);
+                        }
                     } catch (Exception ex) {
                         showError("Failed to assign role: " + ex.getMessage());
                     }
@@ -1712,7 +1712,7 @@ public class Main extends Application
             showGameUI();
         });
         
-        roleBox.getChildren().add(confirmBtn);
+        roleBox.getChildren().addAll(title, infoLabel, playersBox, confirmBtn);
         
         ScrollPane scrollPane = new ScrollPane(roleBox);
         scrollPane.setFitToWidth(true);
