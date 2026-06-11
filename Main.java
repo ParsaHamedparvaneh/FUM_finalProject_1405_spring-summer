@@ -1,12 +1,17 @@
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Pos;
+import javafx.geometry.Bounds;
+import javafx.geometry.Insets;
+import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.FileChooser;
@@ -1392,11 +1397,152 @@ public class Main extends Application
     
     private boolean waitingForCrisisPayment = false;
     private int currentCrisisPlayerIndex = 0;
+
+    private Pane verticesPane;
+    private StackPane mapContainer;
+    private Map<Integer, Circle> vertexCircles = new HashMap<>();
     
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
         showMainMenu();
+    }
+
+    private void refreshVerticesOverlay() {
+        if (mapContainer == null || verticesPane == null || game == null) return;
+        verticesPane.getChildren().clear();
+        vertexCircles.clear();
+        if (mapGrid.getWidth() <= 0 || mapGrid.getHeight() <= 0) return;
+
+        // تبدیل مختصات گوشه اول گرید به مختصات محلی mapContainer
+        Bounds gridBounds = mapGrid.localToScene(mapGrid.getBoundsInLocal());
+        if (gridBounds.getWidth() <= 0) return;
+
+        int rows = game.getGameMap().getRows();
+        int cols = game.getGameMap().getCols();
+
+        double cellWidth = (mapGrid.getWidth() - mapGrid.getPadding().getLeft() - mapGrid.getPadding().getRight()
+                - (cols - 1) * mapGrid.getHgap()) / cols;
+        double cellHeight = (mapGrid.getHeight() - mapGrid.getPadding().getTop() - mapGrid.getPadding().getBottom()
+                - (rows - 1) * mapGrid.getVgap()) / rows;
+
+        // شروع مختصات گرید در مختصات صحنه
+        double startSceneX = gridBounds.getMinX() + mapGrid.getPadding().getLeft();
+        double startSceneY = gridBounds.getMinY() + mapGrid.getPadding().getTop();
+
+        for (int r = 0; r <= rows; r++) {
+            for (int c = 0; c <= cols; c++) {
+                Vertex vertex = findVertexAtGridPosition(r, c);
+                if (vertex == null) continue;
+
+                // مختصات صحنه این رأس
+                double sceneX = startSceneX + c * (cellWidth + mapGrid.getHgap());
+                double sceneY = startSceneY + r * (cellHeight + mapGrid.getVgap());
+
+                // تبدیل به مختصات محلی mapContainer
+                javafx.geometry.Point2D scenePoint = new javafx.geometry.Point2D(sceneX, sceneY);
+                javafx.geometry.Point2D localPoint = mapContainer.sceneToLocal(scenePoint);
+                double localX = localPoint.getX();
+                double localY = localPoint.getY();
+
+                Circle circle = new Circle(14);
+                circle.setFill(vertex.isOccupied() ? Color.GOLD : Color.WHITE);
+                circle.setStroke(vertex.isOccupied() ? Color.ORANGE : Color.BLACK);
+                circle.setStrokeWidth(1.5);
+                circle.setCenterX(localX);
+                circle.setCenterY(localY);
+
+                Text text = new Text(String.valueOf(vertex.getId()));
+                text.setFill(vertex.isOccupied() ? Color.BLACK : Color.DARKBLUE);
+                text.setFont(Font.font("Arial", FontWeight.BOLD, 11));
+
+                Group group = new Group(circle, text);
+                group.setLayoutX(localX - circle.getRadius());
+                group.setLayoutY(localY - circle.getRadius());
+                text.setX(circle.getRadius() - 4);
+                text.setY(circle.getRadius() + 4);
+
+                group.setOnMouseClicked(event -> handleVertexClick(vertex));
+
+                group.setOnMouseEntered(e -> {
+                    if (!vertex.isOccupied()) {
+                        circle.setFill(Color.LIGHTYELLOW);
+                        circle.setStroke(Color.GOLD);
+                    }
+                });
+                group.setOnMouseExited(e -> {
+                    circle.setFill(vertex.isOccupied() ? Color.GOLD : Color.WHITE);
+                    circle.setStroke(vertex.isOccupied() ? Color.ORANGE : Color.BLACK);
+                });
+
+                verticesPane.getChildren().add(group);
+                vertexCircles.put(vertex.getId(), circle);
+            }
+        }
+    }
+
+    // پیدا کردن رأس بر اساس سطر و ستون گوشه (مختصات شبکه رئوس)
+    private Vertex findVertexAtGridPosition(int row, int col) {
+        for (Vertex v : game.getGameMap().getVertices().values()) {
+            List<Sector> adj = v.getAdjacentSectors();
+            if (adj.isEmpty()) continue;
+
+            // پیدا کردن محدوده سکتورهای مجاور
+            int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
+            int maxRow = adj.stream().mapToInt(Sector::getRow).max().getAsInt();
+            int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
+            int maxCol = adj.stream().mapToInt(Sector::getCol).max().getAsInt();
+
+            // اگر رأس در گوشه یا لبه باشد (تعداد سکتورهای مجاور کمتر از ۴)
+            if (adj.size() == 1) {
+                // فقط یک سکتور مجاور – رأس در گوشه پایین-راست آن سکتور قرار دارد
+                Sector s = adj.get(0);
+                if (row == s.getRow() + 1 && col == s.getCol() + 1) return v;
+            } else if (adj.size() == 2) {
+                // لبه - بررسی می‌کنیم که آیا (row, col) روی لبه منطبق است
+                // لبه بالایی: هر دو سکتور در سطر minRow هستند و ستون‌ها minCol و maxCol
+                if (maxRow == minRow) {
+                    if (row == minRow && (col == minCol || col == maxCol)) return v;
+                }
+                // لبه عمودی: هر دو سکتور در ستون minCol هستند و سطرها minRow و maxRow
+                else if (maxCol == minCol) {
+                    if (col == minCol && (row == minRow || row == maxRow)) return v;
+                }
+                // لبه پایینی یا راستی (با دو سکتور در یک ردیف یا ستون)
+                else {
+                    // موارد دیگر
+                    if ((row == minRow && col == minCol) || (row == maxRow && col == maxCol)) return v;
+                }
+            } else {
+                // رأس داخلی (۴ سکتور مجاور) – مختصات گوشه برابر (maxRow, maxCol) است
+                if (row == maxRow && col == maxCol) return v;
+                // همچنین ممکن است رأس داخلی در (minRow, minCol) نباشد ولی برای اطمینان:
+                if (row == minRow+1 && col == minCol+1) return v;
+            }
+        }
+        return null;
+    }
+
+    private void handleVertexClick(Vertex vertex) {
+        if (game.isGameOver()) return;
+        Player currentPlayer = game.getPlayers().get(game.getCurrentPlayerIndex());
+        // اگر رأس خالی است و نوبت کاربر است و امکان ساخت MVP وجود دارد
+        if (!vertex.isOccupied() && !rollButton.isDisable() && buildMVPButton.isDisable()) {
+            try {
+                game.buildMVP(currentPlayer.getId(), vertex.getId());
+                refreshVerticesOverlay();   // به‌روزرسانی رنگ دایره‌ها
+                updateMapGrid();            // به‌روزرسانی سکتورها (برای نمایش شرکت روی نقشه)
+                refreshVerticesOverlay();
+                updateResourcesDisplay();
+                updateEventLog();
+                showInfo("MVP built at vertex " + vertex.getId());
+            } catch (Exception ex) {
+                showError("Cannot build MVP: " + ex.getMessage());
+            }
+        } else if (vertex.isOccupied()) {
+            showInfo("Vertex " + vertex.getId() + " is occupied by " +
+                    (vertex.getStructure() instanceof Unicorn ? "Unicorn" : "MVP"));
+        }
     }
     
     private void showMainMenu() {
@@ -1945,8 +2091,25 @@ public class Main extends Application
         mapGrid.setHgap(5);
         mapGrid.setVgap(5);
         mapGrid.setAlignment(Pos.CENTER);
-        mapGrid.setPadding(new javafx.geometry.Insets(20));
+        mapGrid.setPadding(new Insets(20));
         updateMapGrid();
+        verticesPane = new Pane();
+        verticesPane.setMouseTransparent(false);
+        
+        mapContainer = new StackPane();
+        mapContainer.getChildren().addAll(mapGrid, verticesPane);
+        
+        mapContainer.widthProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
+        mapContainer.heightProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
+        mapGrid.widthProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
+        mapGrid.heightProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
+
+        Platform.runLater(() -> refreshVerticesOverlay());
+
+        ScrollPane mapScroll = new ScrollPane(mapContainer);
+        mapScroll.setFitToWidth(true);
+        mapScroll.setFitToHeight(true);
+        mapScroll.setStyle("-fx-background: #1a1a2e;");
         
         // Right panel
         rightPanel = new VBox(10);
@@ -2018,11 +2181,6 @@ public class Main extends Application
             eventLogArea,
             buttonBox
         );
-        
-        ScrollPane mapScroll = new ScrollPane(mapGrid);
-        mapScroll.setFitToWidth(true);
-        mapScroll.setFitToHeight(true);
-        mapScroll.setStyle("-fx-background: #1a1a2e;");
         
         root.setCenter(mapScroll);
         root.setRight(rightPanel);
@@ -2112,172 +2270,6 @@ public class Main extends Application
         {85, 85}     // Bottom-right
     };
     
-    // For each vertex, determine which corner it belongs to and create a circle
-    for (Vertex v : verticesAround) {
-        // Determine corner based on which sectors are adjacent
-        // A vertex at top-left of this sector is also adjacent to sectors (row-1, col-1), (row-1, col), (row, col-1)
-        boolean isTopLeft = false;
-        boolean isTopRight = false;
-        boolean isBottomLeft = false;
-        boolean isBottomRight = false;
-        
-        // Get all adjacent sectors for this vertex
-        List<Sector> adjSectors = v.getAdjacentSectors();
-        
-        // Check if this vertex is at the top-left corner of the current sector
-        // Top-left corner vertices are adjacent to this sector, the one above, the one left, and the one above-left
-        boolean hasAbove = false;
-        boolean hasLeft = false;
-        boolean hasAboveLeft = false;
-        
-        for (Sector s : adjSectors) {
-            if (s.getRow() == row - 1 && s.getCol() == col) hasAbove = true;
-            if (s.getRow() == row && s.getCol() == col - 1) hasLeft = true;
-            if (s.getRow() == row - 1 && s.getCol() == col - 1) hasAboveLeft = true;
-        }
-        
-        // Vertex is top-left if it's adjacent to this sector and has the above/left pattern
-        if (adjSectors.contains(sector) && (hasAbove || hasLeft || hasAboveLeft)) {
-            isTopLeft = true;
-        }
-        
-        // Check top-right
-        boolean hasAboveRight = false;
-        boolean hasRight = false;
-        for (Sector s : adjSectors) {
-            if (s.getRow() == row - 1 && s.getCol() == col + 1) hasAboveRight = true;
-            if (s.getRow() == row && s.getCol() == col + 1) hasRight = true;
-        }
-        if (adjSectors.contains(sector) && (hasAboveRight || hasRight)) {
-            isTopRight = true;
-        }
-        
-        // Check bottom-left
-        boolean hasBelowLeft = false;
-        boolean hasBelow = false;
-        for (Sector s : adjSectors) {
-            if (s.getRow() == row + 1 && s.getCol() == col - 1) hasBelowLeft = true;
-            if (s.getRow() == row + 1 && s.getCol() == col) hasBelow = true;
-        }
-        if (adjSectors.contains(sector) && (hasBelowLeft || hasBelow)) {
-            isBottomLeft = true;
-        }
-        
-        // Check bottom-right
-        boolean hasBelowRight = false;
-        boolean hasRightBottom = false;
-        for (Sector s : adjSectors) {
-            if (s.getRow() == row + 1 && s.getCol() == col + 1) hasBelowRight = true;
-            if (s.getRow() == row && s.getCol() == col + 1) hasRightBottom = true;
-        }
-        if (adjSectors.contains(sector) && (hasBelowRight || hasRightBottom)) {
-            isBottomRight = true;
-        }
-        
-        // Also check if this vertex is in the middle of 4 sectors (standard case)
-        // Standard corner detection: vertex is at intersection of 4 sectors
-        boolean hasThis = adjSectors.contains(sector);
-        boolean hasRightSector = false;
-        boolean hasDownSector = false;
-        boolean hasDownRightSector = false;
-        
-        for (Sector s : adjSectors) {
-            if (s.getRow() == row && s.getCol() == col + 1) hasRightSector = true;
-            if (s.getRow() == row + 1 && s.getCol() == col) hasDownSector = true;
-            if (s.getRow() == row + 1 && s.getCol() == col + 1) hasDownRightSector = true;
-        }
-        
-        if (hasThis && hasRightSector && hasDownSector && hasDownRightSector) {
-            // This vertex is at top-left corner of this sector
-            isTopLeft = true;
-        }
-        
-        // Simplified detection: use vertex ID modulo pattern as fallback
-        if (!isTopLeft && !isTopRight && !isBottomLeft && !isBottomRight) {
-            int vertexId = v.getId();
-            if (vertexId % 4 == 0) isTopLeft = true;
-            else if (vertexId % 4 == 1) isTopRight = true;
-            else if (vertexId % 4 == 2) isBottomLeft = true;
-            else isBottomRight = true;
-        }
-        
-        // Create the vertex circle
-        Circle vertexCircle = new Circle(12);
-        vertexCircle.setFill(Color.WHITE);
-        vertexCircle.setStroke(Color.BLACK);
-        vertexCircle.setStrokeWidth(1.5);
-        
-        // Add glow effect if occupied
-        if (v.isOccupied()) {
-            vertexCircle.setFill(Color.GOLD);
-            vertexCircle.setStroke(Color.ORANGE);
-            vertexCircle.setStrokeWidth(2);
-        }
-        
-        // Vertex index label (BLACK text on white circle)
-        Text vertexIndex = new Text(String.valueOf(v.getId()));
-        vertexIndex.setStyle("-fx-font-size: 10px; -fx-fill: BLACK; -fx-font-weight: bold;");
-        
-        StackPane vertexPane = new StackPane(vertexCircle, vertexIndex);
-        
-        // Position the vertex at the correct corner
-        if (isTopLeft) {
-            vertexPane.setLayoutX(cornerPositions[0][0] - 12);
-            vertexPane.setLayoutY(cornerPositions[0][1] - 12);
-        } else if (isTopRight) {
-            vertexPane.setLayoutX(cornerPositions[1][0] - 12);
-            vertexPane.setLayoutY(cornerPositions[1][1] - 12);
-        } else if (isBottomLeft) {
-            vertexPane.setLayoutX(cornerPositions[2][0] - 12);
-            vertexPane.setLayoutY(cornerPositions[2][1] - 12);
-        } else if (isBottomRight) {
-            vertexPane.setLayoutX(cornerPositions[3][0] - 12);
-            vertexPane.setLayoutY(cornerPositions[3][1] - 12);
-        } else {
-            // Default position - top-left
-            vertexPane.setLayoutX(cornerPositions[0][0] - 12);
-            vertexPane.setLayoutY(cornerPositions[0][1] - 12);
-        }
-        
-        // Add click handler for building MVP on vertex
-        final Vertex selectedVertex = v;
-        vertexPane.setOnMouseClicked(event -> {
-            if (!v.isOccupied() && !rollButton.isDisable() && buildMVPButton.isDisable()) {
-                try {
-                    game.buildMVP(game.getCurrentPlayerIndex(), selectedVertex.getId());
-                    updateMapGrid();
-                    updateResourcesDisplay();
-                    updateEventLog();
-                    showInfo("MVP built at vertex " + selectedVertex.getId());
-                } catch (Exception ex) {
-                    showError("Cannot build MVP: " + ex.getMessage());
-                }
-            } else if (v.isOccupied()) {
-                showInfo("Vertex " + v.getId() + " is already occupied by " + 
-                    (v.getStructure() instanceof Unicorn ? "Unicorn" : "MVP"));
-            }
-        });
-        
-        // Add hover effect
-        vertexPane.setOnMouseEntered(event -> {
-            if (!v.isOccupied()) {
-                vertexCircle.setFill(Color.LIGHTYELLOW);
-                vertexCircle.setStroke(Color.GOLD);
-            }
-        });
-        vertexPane.setOnMouseExited(event -> {
-            if (!v.isOccupied()) {
-                vertexCircle.setFill(Color.WHITE);
-                vertexCircle.setStroke(Color.BLACK);
-            } else {
-                vertexCircle.setFill(Color.GOLD);
-                vertexCircle.setStroke(Color.ORANGE);
-            }
-        });
-        
-        cell.getChildren().add(vertexPane);
-    }
-    
     VBox labels = new VBox(5, activationText, typeText);
     labels.setAlignment(Pos.CENTER);
     
@@ -2362,6 +2354,7 @@ public class Main extends Application
         try {
             int roll = game.rollDice();
             updateMapGrid();
+            refreshVerticesOverlay();
             updateMarketDisplay();
             updateResourcesDisplay();
             updateEventLog();
@@ -2506,6 +2499,7 @@ public class Main extends Application
                         game.placeInspector(game.getCurrentPlayerIndex(), finalRow, finalCol);
                         inspectorStage.close();
                         updateMapGrid();
+                        refreshVerticesOverlay();
                         updateEventLog();
                         enableActionButtons(true);
                         rollButton.setDisable(true);
@@ -2562,6 +2556,7 @@ public class Main extends Application
             try {
                 game.buildMVP(game.getCurrentPlayerIndex(), vertex.getId());
                 updateMapGrid();
+                refreshVerticesOverlay();
                 updateResourcesDisplay();
                 updateEventLog();
                 showInfo("MVP built successfully at " + selected);
@@ -2603,6 +2598,7 @@ public class Main extends Application
             try {
                 game.upgradeToUnicorn(game.getCurrentPlayerIndex(), vertex.getId());
                 updateMapGrid();
+                refreshVerticesOverlay();
                 updateResourcesDisplay();
                 updateEventLog();
                 showInfo("MVP upgraded to Unicorn at " + selected);
@@ -2646,6 +2642,7 @@ public class Main extends Application
             try {
                 game.buildPartnership(game.getCurrentPlayerIndex(), edge.getId());
                 updateMapGrid();
+                refreshVerticesOverlay();
                 updateResourcesDisplay();
                 updateEventLog();
                 showInfo("Partnership built successfully at " + selected);
