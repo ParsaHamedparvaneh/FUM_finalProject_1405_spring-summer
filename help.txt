@@ -1,2 +1,1 @@
-javac --module-path javafx-sdk-21.0.11\lib --add-modules javafx.controls Main.java
-java --module-path javafx-sdk-21.0.11\lib --add-modules javafx.controls Main
+javac --module-path javafx-sdk-21.0.11\lib --add-modules javafx.controls Main.java && java --module-path javafx-sdk-21.0.11\lib --add-modules javafx.controls Main
