@@ -1,3 +1,16 @@
+import javafx.application.Application;
+import javafx.application.Platform;
+import javafx.geometry.Pos;
+import javafx.scene.Scene;
+import javafx.scene.control.*;
+import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.shape.Rectangle;
+import javafx.scene.text.Text;
+import javafx.stage.Stage;
+import javafx.stage.FileChooser;
+import javafx.animation.PauseTransition;
+import javafx.util.Duration;
 import java.util.*;
 import java.io.*;
 
@@ -1351,5 +1364,1015 @@ class GameController implements Serializable
     private void log(String message)
     {
         eventLog.add("[Turn " + turnCount + "] " + message);
+    }
+}
+
+
+public class Main extends Application
+{
+    private GameController game;
+    private Thread gameThread;
+    private Stage primaryStage;
+    
+    // UI Components
+    private GridPane mapGrid;
+    private VBox rightPanel;
+    private TextArea eventLogArea;
+    private Label currentPlayerLabel;
+    private Label marketPricesLabel;
+    private VBox playersResourcesBox;
+    
+    // Control buttons
+    private Button rollButton;
+    private Button endTurnButton;
+    private Button buildMVPButton;
+    private Button upgradeButton;
+    private Button buildPartnershipButton;
+    private Button marketButton;
+    
+    private boolean waitingForCrisisPayment = false;
+    private int currentCrisisPlayerIndex = 0;
+    
+    @Override
+    public void start(Stage stage) {
+        this.primaryStage = stage;
+        showMainMenu();
+    }
+    
+    private void showMainMenu() {
+        VBox menuBox = new VBox(15);
+        menuBox.setAlignment(Pos.CENTER);
+        menuBox.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 40px;");
+        
+        Text title = new Text("Silicon Valley: The Tech Cartel");
+        title.setStyle("-fx-font-size: 28px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
+        
+        Button newGameBtn = new Button("New Game");
+        newGameBtn.setStyle("-fx-font-size: 18px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 200px;");
+        newGameBtn.setOnAction(e -> showPlayerSetup());
+        
+        Button loadGameBtn = new Button("Load Game");
+        loadGameBtn.setStyle("-fx-font-size: 18px; -fx-background-color: #2196F3; -fx-text-fill: white; -fx-min-width: 200px;");
+        loadGameBtn.setOnAction(e -> loadGame());
+        
+        Button exitBtn = new Button("Exit");
+        exitBtn.setStyle("-fx-font-size: 18px; -fx-background-color: #f44336; -fx-text-fill: white; -fx-min-width: 200px;");
+        exitBtn.setOnAction(e -> Platform.exit());
+        
+        menuBox.getChildren().addAll(title, newGameBtn, loadGameBtn, exitBtn);
+        
+        Scene scene = new Scene(menuBox, 800, 600);
+        primaryStage.setScene(scene);
+        primaryStage.setTitle("Silicon Valley: The Tech Cartel");
+        primaryStage.show();
+    }
+    
+    private void showPlayerSetup() {
+        VBox setupBox = new VBox(10);
+        setupBox.setAlignment(Pos.CENTER);
+        setupBox.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 20px;");
+        
+        Text title = new Text("Game Setup");
+        title.setStyle("-fx-font-size: 24px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
+        
+        HBox playerCountBox = new HBox(10);
+        playerCountBox.setAlignment(Pos.CENTER);
+        Label countLabel = new Label("Number of Players:");
+        countLabel.setStyle("-fx-fill: #eeeeee;");
+        ComboBox<Integer> playerCountCombo = new ComboBox<>();
+        playerCountCombo.getItems().addAll(2, 3, 4);
+        playerCountCombo.setValue(2);
+        playerCountBox.getChildren().addAll(countLabel, playerCountCombo);
+        
+        VBox nameBox = new VBox(5);
+        
+        Runnable updateNameFields = () -> {
+            nameBox.getChildren().clear();
+            int count = playerCountCombo.getValue();
+            for (int i = 0; i < count; i++) {
+                Label playerLabel = new Label("Player " + (i + 1) + ":");
+                playerLabel.setStyle("-fx-fill: #eeeeee;");
+                TextField tf = new TextField("Player " + (i + 1));
+                nameBox.getChildren().addAll(playerLabel, tf);
+            }
+        };
+        
+        playerCountCombo.setOnAction(e -> updateNameFields.run());
+        updateNameFields.run();
+        
+        // Role selection checkbox
+        CheckBox roleToggle = new CheckBox("Enable Founder Roles (costs 1 point)");
+        roleToggle.setStyle("-fx-text-fill: #eeeeee;");
+        
+        Button startButton = new Button("Start Game");
+        startButton.setStyle("-fx-font-size: 16px; -fx-background-color: #4CAF50; -fx-text-fill: white;");
+        startButton.setOnAction(e -> {
+            List<String> names = new ArrayList<>();
+            int playerCount = playerCountCombo.getValue();
+            for (int i = 0; i < playerCount; i++) {
+                TextField tf = (TextField) nameBox.getChildren().get(i * 2 + 1);
+                names.add(tf.getText());
+            }
+            startNewGame(names, roleToggle.isSelected());
+        });
+        
+        setupBox.getChildren().addAll(title, playerCountBox, nameBox, roleToggle, startButton);
+        
+        Scene scene = new Scene(setupBox, 800, 600);
+        primaryStage.setScene(scene);
+    }
+    
+    private void startNewGame(List<String> playerNames, boolean withRoles) {
+        // Run game logic in separate thread (Thread management requirement)
+        gameThread = new Thread(() -> {
+            try {
+                long seed = System.currentTimeMillis();
+                game = new GameController(playerNames, seed);
+                
+                // Run initial placement
+                Platform.runLater(() -> {
+                    try {
+                        performInitialPlacement();
+                        if (withRoles) {
+                            showRoleSelection();
+                        } else {
+                            showGameUI();
+                        }
+                    } catch (Exception ex) {
+                        ex.printStackTrace();
+                        showError("Initial placement failed: " + ex.getMessage());
+                    }
+                });
+            } catch (Exception ex) {
+                ex.printStackTrace();
+                Platform.runLater(() -> showError("Failed to create game: " + ex.getMessage()));
+            }
+        });
+        gameThread.setDaemon(true);
+        gameThread.start();
+    }
+    
+    private void performInitialPlacement() throws Exception {
+        // Round 1: forward order
+        for (int i = 0; i < game.getPlayers().size(); i++) {
+            Player player = game.getPlayers().get(i);
+            // Find a valid vertex
+            Vertex vertex = findValidVertexForPlacement();
+            if (vertex != null) {
+                // Find an adjacent edge
+                Edge edge = findAdjacentEdge(vertex.getId());
+                if (edge != null) {
+                    game.setupInitialPlacement(player.getId(), vertex.getId(), edge.getId(), false);
+                }
+            }
+        }
+        
+        // Round 2: reverse order with resource grant
+        for (int i = game.getPlayers().size() - 1; i >= 0; i--) {
+            Player player = game.getPlayers().get(i);
+            Vertex vertex = findValidVertexForPlacement();
+            if (vertex != null) {
+                Edge edge = findAdjacentEdge(vertex.getId());
+                if (edge != null) {
+                    game.setupInitialPlacement(player.getId(), vertex.getId(), edge.getId(), true);
+                }
+            }
+        }
+    }
+    
+    private Vertex findValidVertexForPlacement() {
+        for (Vertex v : game.getGameMap().getVertices().values()) {
+            if (!v.isOccupied()) {
+                boolean valid = true;
+                for (Vertex other : game.getGameMap().getVertices().values()) {
+                    if (other.isOccupied() && game.getGameMap().distanceInVertices(v.getId(), other.getId()) < 2) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (valid) return v;
+            }
+        }
+        return null;
+    }
+    
+    private Edge findAdjacentEdge(int vertexId) {
+        for (Edge e : game.getGameMap().getEdges().values()) {
+            if (e.connects(vertexId) && !e.hasPartnership()) {
+                return e;
+            }
+        }
+        return null;
+    }
+    
+    private void showRoleSelection() {
+        Stage roleStage = new Stage();
+        VBox roleBox = new VBox(10);
+        roleBox.setAlignment(Pos.CENTER);
+        roleBox.setStyle("-fx-background-color: #1a1a2e; -fx-padding: 20px;");
+        
+        Text title = new Text("Select Founder Roles (Optional)");
+        title.setStyle("-fx-font-size: 20px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
+        
+        Label infoLabel = new Label("Each role can only be taken by one player. Roles cost -1 point.");
+        infoLabel.setStyle("-fx-fill: #ff9800; -fx-font-size: 12px;");
+        
+        List<Player> players = game.getPlayers();
+        Map<Integer, FounderRole> selectedRoles = new HashMap<>();
+        List<FounderRole> availableRoles = new ArrayList<>(Arrays.asList(
+            FounderRole.CEO_HACKER, FounderRole.TECH_GURU, FounderRole.VC_FUNDED
+        ));
+        
+        for (Player player : players) {
+            VBox playerBox = new VBox(5);
+            playerBox.setStyle("-fx-padding: 5px; -fx-border-color: #444; -fx-border-radius: 5px;");
+            Label nameLabel = new Label(player.getName());
+            nameLabel.setStyle("-fx-fill: #eeeeee; -fx-font-weight: bold;");
+            
+            ComboBox<String> roleCombo = new ComboBox<>();
+            roleCombo.getItems().add("No Role");
+            for (FounderRole r : availableRoles) {
+                roleCombo.getItems().add(r.display());
+            }
+            roleCombo.setValue("No Role");
+            roleCombo.setStyle("-fx-font-size: 12px;");
+            
+            // Description area
+            TextArea descArea = new TextArea();
+            descArea.setEditable(false);
+            descArea.setPrefHeight(50);
+            descArea.setStyle("-fx-control-inner-background: #0f3460; -fx-text-fill: #eeeeee;");
+            descArea.setText("No special abilities");
+            
+            roleCombo.setOnAction(e -> {
+                String selected = roleCombo.getValue();
+                if (selected.equals("CEO Hacker")) {
+                    descArea.setText("Trades at 3:1 rate instead of 4:1");
+                } else if (selected.equals("Tech Guru (CTO)")) {
+                    descArea.setText("Upgrades MVP using 1 less Cloud resource");
+                } else if (selected.equals("VC-Funded")) {
+                    descArea.setText("Starts with +2 Capital, holds 9 cards before tax");
+                } else {
+                    descArea.setText("No special abilities");
+                }
+            });
+            
+            playerBox.getChildren().addAll(nameLabel, roleCombo, descArea);
+            roleBox.getChildren().add(playerBox);
+            selectedRoles.put(player.getId(), null);
+        }
+        
+        Button confirmBtn = new Button("Start Game");
+        confirmBtn.setStyle("-fx-font-size: 16px; -fx-background-color: #4CAF50; -fx-text-fill: white;");
+        confirmBtn.setOnAction(e -> {
+            roleStage.close();
+            showGameUI();
+        });
+        
+        roleBox.getChildren().add(confirmBtn);
+        
+        ScrollPane scrollPane = new ScrollPane(roleBox);
+        scrollPane.setFitToWidth(true);
+        scrollPane.setStyle("-fx-background: #1a1a2e;");
+        
+        Scene scene = new Scene(scrollPane, 500, 500);
+        roleStage.setScene(scene);
+        roleStage.setTitle("Select Roles");
+        roleStage.show();
+    }
+    
+    private void showGameUI() {
+        BorderPane root = new BorderPane();
+        root.setStyle("-fx-background-color: #1a1a2e;");
+        
+        // Menu bar
+        MenuBar menuBar = new MenuBar();
+        Menu gameMenu = new Menu("Game");
+        MenuItem saveItem = new MenuItem("Save Game");
+        saveItem.setOnAction(e -> saveGame());
+        MenuItem loadItem = new MenuItem("Load Game");
+        loadItem.setOnAction(e -> loadGame());
+        MenuItem exitItem = new MenuItem("Exit to Menu");
+        exitItem.setOnAction(e -> showMainMenu());
+        gameMenu.getItems().addAll(saveItem, loadItem, exitItem);
+        
+        Menu helpMenu = new Menu("Help");
+        MenuItem rulesItem = new MenuItem("Game Rules");
+        rulesItem.setOnAction(e -> showRules());
+        helpMenu.getItems().add(rulesItem);
+        
+        menuBar.getMenus().addAll(gameMenu, helpMenu);
+        root.setTop(menuBar);
+        
+        // Map grid
+        mapGrid = new GridPane();
+        mapGrid.setHgap(5);
+        mapGrid.setVgap(5);
+        mapGrid.setAlignment(Pos.CENTER);
+        mapGrid.setPadding(new javafx.geometry.Insets(20));
+        updateMapGrid();
+        
+        // Right panel
+        rightPanel = new VBox(10);
+        rightPanel.setStyle("-fx-background-color: #16213e; -fx-padding: 15px;");
+        rightPanel.setPrefWidth(350);
+        
+        currentPlayerLabel = new Label("Current: " + game.getPlayers().get(game.getCurrentPlayerIndex()).getName());
+        currentPlayerLabel.setStyle("-fx-font-size: 16px; -fx-fill: #ffd700; -fx-font-weight: bold;");
+        
+        marketPricesLabel = new Label();
+        updateMarketDisplay();
+        
+        playersResourcesBox = new VBox(5);
+        updateResourcesDisplay();
+        
+        eventLogArea = new TextArea();
+        eventLogArea.setEditable(false);
+        eventLogArea.setPrefHeight(200);
+        eventLogArea.setStyle("-fx-control-inner-background: #0f3460; -fx-text-fill: #eeeeee;");
+        updateEventLog();
+        
+        // Buttons
+        rollButton = new Button("🎲 Roll Dice");
+        rollButton.setStyle("-fx-font-size: 14px; -fx-background-color: #2196F3; -fx-text-fill: white; -fx-min-width: 150px;");
+        rollButton.setOnAction(e -> rollDice());
+        
+        buildMVPButton = new Button("🏗️ Build MVP");
+        buildMVPButton.setStyle("-fx-font-size: 14px; -fx-background-color: #4CAF50; -fx-text-fill: white; -fx-min-width: 150px;");
+        buildMVPButton.setOnAction(e -> showBuildMVPMenu());
+        buildMVPButton.setDisable(true);
+        
+        upgradeButton = new Button("🦄 Upgrade to Unicorn");
+        upgradeButton.setStyle("-fx-font-size: 14px; -fx-background-color: #FF9800; -fx-text-fill: white; -fx-min-width: 150px;");
+        upgradeButton.setOnAction(e -> showUpgradeMenu());
+        upgradeButton.setDisable(true);
+        
+        buildPartnershipButton = new Button("🤝 Build Partnership");
+        buildPartnershipButton.setStyle("-fx-font-size: 14px; -fx-background-color: #9C27B0; -fx-text-fill: white; -fx-min-width: 150px;");
+        buildPartnershipButton.setOnAction(e -> showBuildPartnershipMenu());
+        buildPartnershipButton.setDisable(true);
+        
+        marketButton = new Button("💰 Market");
+        marketButton.setStyle("-fx-font-size: 14px; -fx-background-color: #009688; -fx-text-fill: white; -fx-min-width: 150px;");
+        marketButton.setOnAction(e -> showMarketMenu());
+        marketButton.setDisable(true);
+        
+        endTurnButton = new Button("⏭️ End Turn");
+        endTurnButton.setStyle("-fx-font-size: 14px; -fx-background-color: #f44336; -fx-text-fill: white; -fx-min-width: 150px;");
+        endTurnButton.setOnAction(e -> endTurn());
+        endTurnButton.setDisable(true);
+        
+        HBox buttonBox = new HBox(10, rollButton, buildMVPButton, upgradeButton, buildPartnershipButton, marketButton, endTurnButton);
+        buttonBox.setAlignment(Pos.CENTER);
+        
+        rightPanel.getChildren().addAll(
+            currentPlayerLabel, 
+            new Separator(),
+            marketPricesLabel,
+            new Separator(),
+            new Label("Player Resources:"),
+            playersResourcesBox,
+            new Separator(),
+            new Label("Event Log:"),
+            eventLogArea,
+            buttonBox
+        );
+        
+        ScrollPane mapScroll = new ScrollPane(mapGrid);
+        mapScroll.setFitToWidth(true);
+        mapScroll.setFitToHeight(true);
+        mapScroll.setStyle("-fx-background: #1a1a2e;");
+        
+        root.setCenter(mapScroll);
+        root.setRight(rightPanel);
+        
+        Scene scene = new Scene(root, 1400, 900);
+        primaryStage.setScene(scene);
+        primaryStage.setTitle("Silicon Valley: The Tech Cartel");
+        primaryStage.show();
+        
+        // Start auto-refresh for event log
+        startEventLogUpdater();
+    }
+    
+    private void startEventLogUpdater() {
+        Thread updater = new Thread(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(500);
+                    Platform.runLater(() -> {
+                        updateEventLog();
+                        updateResourcesDisplay();
+                    });
+                } catch (InterruptedException e) {
+                    break;
+                }
+            }
+        });
+        updater.setDaemon(true);
+        updater.start();
+    }
+    
+    private void updateMapGrid() {
+        mapGrid.getChildren().clear();
+        GameMap gameMap = game.getGameMap();
+        Sector[][] sectors = gameMap.getSectors();
+        
+        for (int row = 0; row < sectors.length; row++) {
+            for (int col = 0; col < sectors[0].length; col++) {
+                Sector sector = sectors[row][col];
+                StackPane cell = createSectorCell(sector, row, col);
+                mapGrid.add(cell, col, row);
+            }
+        }
+    }
+    
+    private StackPane createSectorCell(Sector sector, int row, int col) {
+        StackPane cell = new StackPane();
+        cell.setPrefSize(100, 100);
+        cell.setStyle("-fx-border-color: #333; -fx-border-width: 1px; -fx-border-radius: 5px;");
+        
+        Color bgColor = getSectorColor(sector.getType());
+        Rectangle bg = new Rectangle(100, 100);
+        bg.setFill(bgColor);
+        bg.setArcWidth(10);
+        bg.setArcHeight(10);
+        
+        // Inspector indicator
+        if (game.getInspectorSector() == sector) {
+            Rectangle inspectorBadge = new Rectangle(25, 25);
+            inspectorBadge.setFill(Color.RED);
+            inspectorBadge.setArcWidth(5);
+            inspectorBadge.setArcHeight(5);
+            Text inspectorText = new Text("🔍");
+            inspectorText.setStyle("-fx-font-size: 12px;");
+            StackPane inspectorPane = new StackPane(inspectorBadge, inspectorText);
+            StackPane.setAlignment(inspectorPane, Pos.TOP_RIGHT);
+            cell.getChildren().add(inspectorPane);
+        }
+        
+        String displayName = sector.getType().display();
+        String shortName = displayName.length() > 8 ? displayName.substring(0, 8) : displayName;
+        Text typeText = new Text(shortName);
+        typeText.setStyle("-fx-font-size: 9px; -fx-fill: #eeeeee;");
+        
+        Text activationText = new Text(sector.getType().isProductive() ? String.valueOf(sector.getActivationNumber()) : "⚖");
+        activationText.setStyle("-fx-font-size: 18px; -fx-fill: #eeeeee; -fx-font-weight: bold;");
+        
+        // Show company markers on vertices
+        for (Vertex v : game.getGameMap().verticesAround(sector)) {
+            if (v.isOccupied()) {
+                CompanyStructure cs = v.getStructure();
+                String symbol = cs instanceof Unicorn ? "🦄" : "★";
+                Text marker = new Text(symbol);
+                marker.setStyle("-fx-font-size: 16px; -fx-fill: gold;");
+                
+                // Position based on vertex position relative to sector
+                int vertexId = v.getId();
+                if (vertexId % 3 == 0) {
+                    StackPane.setAlignment(marker, Pos.TOP_LEFT);
+                } else if (vertexId % 3 == 1) {
+                    StackPane.setAlignment(marker, Pos.TOP_RIGHT);
+                } else if (vertexId % 3 == 2) {
+                    StackPane.setAlignment(marker, Pos.BOTTOM_LEFT);
+                } else {
+                    StackPane.setAlignment(marker, Pos.BOTTOM_RIGHT);
+                }
+                cell.getChildren().add(marker);
+            }
+        }
+        
+        VBox labels = new VBox(5, activationText, typeText);
+        labels.setAlignment(Pos.CENTER);
+        
+        cell.getChildren().addAll(bg, labels);
+        return cell;
+    }
+    
+    private Color getSectorColor(SectorType type) {
+        switch (type) {
+            case HUB_AI: return Color.web("#443199");
+            case DISTRICT_FINTECH: return Color.web("#111844");
+            case CAMPUS_CLOUD: return Color.web("#C13383");
+            case QUARTER_IP: return Color.web("#792CA2");
+            case VALLEY_DATA: return Color.web("#E05454");
+            case ZONE_REGULATORY: return Color.web("#555555");
+            default: return Color.GRAY;
+        }
+    }
+    
+    private void updateMarketDisplay() {
+        StringBuilder sb = new StringBuilder("💰 Market Prices:\n");
+        for (Resource r : Resource.values()) {
+            sb.append("  ").append(r.display()).append(": ").append(game.getMarket().priceOf(r)).append("\n");
+        }
+        marketPricesLabel.setText(sb.toString());
+        marketPricesLabel.setStyle("-fx-fill: #eeeeee;");
+    }
+    
+    private void updateResourcesDisplay() {
+        playersResourcesBox.getChildren().clear();
+        for (Player player : game.getPlayers()) {
+            VBox playerBox = new VBox(3);
+            playerBox.setStyle("-fx-background-color: #0f3460; -fx-padding: 5px; -fx-border-radius: 5px;");
+            
+            boolean isCurrent = player.getId() == game.getPlayers().get(game.getCurrentPlayerIndex()).getId();
+            String style = isCurrent ? "-fx-fill: #ffd700; -fx-font-weight: bold;" : "-fx-fill: #eeeeee;";
+            
+            Label nameLabel = new Label(player.getName() + " (Score: " + player.computeScore() + ")");
+            nameLabel.setStyle(style);
+            
+            HBox resourcesBox = new HBox(5);
+            for (Resource r : Resource.values()) {
+                int amount = player.getResource(r);
+                if (amount > 0) {
+                    String shortName = r.display().length() > 3 ? r.display().substring(0, 3) : r.display();
+                    Label resLabel = new Label(shortName + ":" + amount);
+                    resLabel.setStyle("-fx-background-color: " + getResourceColor(r) + "; -fx-padding: 2px 5px; -fx-border-radius: 3px; -fx-text-fill: white; -fx-font-size: 10px;");
+                    resourcesBox.getChildren().add(resLabel);
+                }
+            }
+            
+            Label totalLabel = new Label("Total: " + player.totalCards());
+            totalLabel.setStyle("-fx-fill: #ff9800; -fx-font-size: 10px;");
+            
+            playerBox.getChildren().addAll(nameLabel, resourcesBox, totalLabel);
+            playersResourcesBox.getChildren().add(playerBox);
+        }
+    }
+    
+    private String getResourceColor(Resource r) {
+        switch (r) {
+            case TALENT: return "#443199";
+            case CAPITAL: return "#111844";
+            case CLOUD: return "#C13383";
+            case DATA: return "#E05454";
+            case PATENT: return "#792CA2";
+            default: return "#555";
+        }
+    }
+    
+    private void updateEventLog() {
+        StringBuilder sb = new StringBuilder();
+        List<String> log = game.getEventLog();
+        int start = Math.max(0, log.size() - 20);
+        for (int i = start; i < log.size(); i++) {
+            sb.append("• ").append(log.get(i)).append("\n");
+        }
+        eventLogArea.setText(sb.toString());
+    }
+    
+    private void rollDice() {
+        try {
+            int roll = game.rollDice();
+            updateMapGrid();
+            updateMarketDisplay();
+            updateResourcesDisplay();
+            updateEventLog();
+            
+            // Check if crisis requires tax payment
+            if (roll == GameConstants.CRISIS_DICE_SUM) {
+                handleCrisisTax();
+            } else {
+                // Enable action buttons after roll
+                enableActionButtons(true);
+                rollButton.setDisable(true);
+            }
+            
+        } catch (Exception ex) {
+            showError("Roll failed: " + ex.getMessage());
+        }
+    }
+    
+    private void handleCrisisTax() {
+        waitingForCrisisPayment = true;
+        currentCrisisPlayerIndex = 0;
+        processNextCrisisPayment();
+    }
+    
+    private void processNextCrisisPayment() {
+        if (currentCrisisPlayerIndex >= game.getPlayers().size()) {
+            // All taxes paid, now place inspector
+            waitingForCrisisPayment = false;
+            showInspectorPlacement();
+            return;
+        }
+        
+        Player player = game.getPlayers().get(currentCrisisPlayerIndex);
+        int pendingTax = player.getPendingTax();
+        
+        if (pendingTax > 0) {
+            showTaxPaymentDialog(player, pendingTax);
+        } else {
+            currentCrisisPlayerIndex++;
+            processNextCrisisPayment();
+        }
+    }
+    
+    private void showTaxPaymentDialog(Player player, int amount) {
+        Stage taxStage = new Stage();
+        VBox taxBox = new VBox(10);
+        taxBox.setAlignment(Pos.CENTER);
+        taxBox.setStyle("-fx-padding: 20px; -fx-background-color: #1a1a2e;");
+        
+        Label title = new Label(player.getName() + " - Pay Tax");
+        title.setStyle("-fx-fill: #ffd700; -fx-font-size: 18px;");
+        
+        Label info = new Label("You must return " + amount + " cards to the bank.");
+        info.setStyle("-fx-fill: #eeeeee;");
+        
+        // Create spinners for each resource type
+        Map<Resource, Integer> toReturn = new EnumMap<>(Resource.class);
+        VBox resourcesBox = new VBox(5);
+        
+        for (Resource r : Resource.values()) {
+            int available = player.getResource(r);
+            if (available > 0) {
+                HBox row = new HBox(10);
+                Label resLabel = new Label(r.display() + " (" + available + "):");
+                resLabel.setStyle("-fx-fill: #eeeeee;");
+                Spinner<Integer> spinner = new Spinner<>(0, available, 0);
+                spinner.setEditable(true);
+                row.getChildren().addAll(resLabel, spinner);
+                resourcesBox.getChildren().add(row);
+                
+                final Resource resource = r;
+                spinner.valueProperty().addListener((obs, old, val) -> {
+                    toReturn.put(resource, val);
+                });
+            }
+        }
+        
+        Button confirmBtn = new Button("Pay Tax");
+        confirmBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+        confirmBtn.setOnAction(e -> {
+            int total = toReturn.values().stream().mapToInt(Integer::intValue).sum();
+            if (total == amount) {
+                try {
+                    game.applyCrisisTax(player.getId(), toReturn);
+                    taxStage.close();
+                    currentCrisisPlayerIndex++;
+                    processNextCrisisPayment();
+                    updateResourcesDisplay();
+                    updateEventLog();
+                } catch (Exception ex) {
+                    showError("Failed to pay tax: " + ex.getMessage());
+                }
+            } else {
+                showError("Must return exactly " + amount + " cards");
+            }
+        });
+        
+        taxBox.getChildren().addAll(title, info, resourcesBox, confirmBtn);
+        Scene scene = new Scene(taxBox, 400, 400);
+        taxStage.setScene(scene);
+        taxStage.showAndWait();
+    }
+    
+    private void showInspectorPlacement() {
+        Stage inspectorStage = new Stage();
+        VBox inspectorBox = new VBox(10);
+        inspectorBox.setAlignment(Pos.CENTER);
+        inspectorBox.setStyle("-fx-padding: 20px; -fx-background-color: #1a1a2e;");
+        
+        Label title = new Label("Place the Inspector");
+        title.setStyle("-fx-fill: #ffd700; -fx-font-size: 18px;");
+        
+        Label info = new Label("Click on a sector to place the inspector.");
+        info.setStyle("-fx-fill: #eeeeee;");
+        
+        // Create a mini-map for inspector placement
+        GridPane miniMap = new GridPane();
+        miniMap.setHgap(2);
+        miniMap.setVgap(2);
+        
+        Sector[][] sectors = game.getGameMap().getSectors();
+        for (int row = 0; row < sectors.length; row++) {
+            for (int col = 0; col < sectors[0].length; col++) {
+                Sector sector = sectors[row][col];
+                StackPane cell = new StackPane();
+                cell.setPrefSize(50, 50);
+                cell.setStyle("-fx-border-color: #333; -fx-border-width: 1px;");
+                
+                Color bgColor = getSectorColor(sector.getType());
+                Rectangle bg = new Rectangle(50, 50);
+                bg.setFill(bgColor);
+                
+                Text symbol = new Text(sector.getType().isProductive() ? String.valueOf(sector.getActivationNumber()) : "⚖");
+                symbol.setStyle("-fx-fill: white;");
+                
+                cell.getChildren().addAll(bg, symbol);
+                
+                final int finalRow = row;
+                final int finalCol = col;
+                cell.setOnMouseClicked(e -> {
+                    try {
+                        game.placeInspector(game.getCurrentPlayerIndex(), finalRow, finalCol);
+                        inspectorStage.close();
+                        updateMapGrid();
+                        updateEventLog();
+                        enableActionButtons(true);
+                        rollButton.setDisable(true);
+                    } catch (Exception ex) {
+                        showError("Cannot place inspector: " + ex.getMessage());
+                    }
+                });
+                
+                miniMap.add(cell, col, row);
+            }
+        }
+        
+        inspectorBox.getChildren().addAll(title, info, miniMap);
+        Scene scene = new Scene(inspectorBox, 400, 500);
+        inspectorStage.setScene(scene);
+        inspectorStage.show();
+    }
+    
+    private void showBuildMVPMenu() {
+        List<Vertex> availableVertices = new ArrayList<>();
+        for (Vertex v : game.getGameMap().getVertices().values()) {
+            if (!v.isOccupied()) {
+                boolean valid = true;
+                for (Vertex other : game.getGameMap().getVertices().values()) {
+                    if (other.isOccupied() && game.getGameMap().distanceInVertices(v.getId(), other.getId()) < 2) {
+                        valid = false;
+                        break;
+                    }
+                }
+                if (valid) availableVertices.add(v);
+            }
+        }
+        
+        if (availableVertices.isEmpty()) {
+            showError("No valid location for MVP!");
+            return;
+        }
+        
+        ChoiceDialog<Vertex> dialog = new ChoiceDialog<>(availableVertices.get(0), availableVertices);
+        dialog.setTitle("Build MVP");
+        dialog.setHeaderText("Select a vertex (Cost: 1 Capital, 1 Talent, 1 Cloud, 1 Data)");
+        dialog.setContentText("Vertices:");
+        
+        dialog.showAndWait().ifPresent(vertex -> {
+            try {
+                game.buildMVP(game.getCurrentPlayerIndex(), vertex.getId());
+                updateMapGrid();
+                updateResourcesDisplay();
+                updateEventLog();
+            } catch (Exception ex) {
+                showError("Cannot build MVP: " + ex.getMessage());
+            }
+        });
+    }
+    
+    private void showUpgradeMenu() {
+        Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
+        List<Vertex> upgradableVertices = new ArrayList<>();
+        
+        for (Vertex v : current.getOwnedVertices()) {
+            if (v.getStructure() instanceof MVP) {
+                upgradableVertices.add(v);
+            }
+        }
+        
+        if (upgradableVertices.isEmpty()) {
+            showError("No MVP to upgrade!");
+            return;
+        }
+        
+        ChoiceDialog<Vertex> dialog = new ChoiceDialog<>(upgradableVertices.get(0), upgradableVertices);
+        dialog.setTitle("Upgrade to Unicorn");
+        dialog.setHeaderText("Select an MVP to upgrade (Cost: 3 Data, 2 Cloud)");
+        dialog.setContentText("MVPs:");
+        
+        dialog.showAndWait().ifPresent(vertex -> {
+            try {
+                game.upgradeToUnicorn(game.getCurrentPlayerIndex(), vertex.getId());
+                updateMapGrid();
+                updateResourcesDisplay();
+                updateEventLog();
+            } catch (Exception ex) {
+                showError("Cannot upgrade: " + ex.getMessage());
+            }
+        });
+    }
+    
+    private void showBuildPartnershipMenu() {
+        Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
+        List<Edge> availableEdges = new ArrayList<>();
+        
+        for (Edge e : game.getGameMap().getEdges().values()) {
+            if (!e.hasPartnership()) {
+                if (isConnectedToPlayer(current, e)) {
+                    availableEdges.add(e);
+                }
+            }
+        }
+        
+        if (availableEdges.isEmpty()) {
+            showError("No valid location for Partnership!");
+            return;
+        }
+        
+        ChoiceDialog<Edge> dialog = new ChoiceDialog<>(availableEdges.get(0), availableEdges);
+        dialog.setTitle("Build Partnership");
+        dialog.setHeaderText("Select an edge (Cost: 1 Capital, 1 Patent)");
+        dialog.setContentText("Edges:");
+        
+        dialog.showAndWait().ifPresent(edge -> {
+            try {
+                game.buildPartnership(game.getCurrentPlayerIndex(), edge.getId());
+                updateMapGrid();
+                updateResourcesDisplay();
+                updateEventLog();
+            } catch (Exception ex) {
+                showError("Cannot build Partnership: " + ex.getMessage());
+            }
+        });
+    }
+    
+    private boolean isConnectedToPlayer(Player player, Edge edge) {
+        int a = edge.getVertexA();
+        int b = edge.getVertexB();
+        
+        for (Vertex v : player.getOwnedVertices()) {
+            if (v.getId() == a || v.getId() == b) return true;
+        }
+        for (Edge e : player.getOwnedEdges()) {
+            if (e.connects(a) || e.connects(b)) return true;
+        }
+        return false;
+    }
+    
+    private void showMarketMenu() {
+        Stage marketStage = new Stage();
+        VBox marketBox = new VBox(10);
+        marketBox.setAlignment(Pos.CENTER);
+        marketBox.setStyle("-fx-padding: 20px; -fx-background-color: #1a1a2e;");
+        
+        Player current = game.getPlayers().get(game.getCurrentPlayerIndex());
+        
+        Label title = new Label("Dynamic Market");
+        title.setStyle("-fx-fill: #ffd700; -fx-font-size: 18px;");
+        
+        Label capitalLabel = new Label("Your Capital: " + current.getResource(Resource.CAPITAL));
+        capitalLabel.setStyle("-fx-fill: #eeeeee;");
+        
+        for (Resource r : Resource.values()) {
+            if (r != Resource.CAPITAL) {
+                HBox row = new HBox(10);
+                row.setAlignment(Pos.CENTER);
+                
+                int price = game.getMarket().priceOf(r);
+                int have = current.getResource(r);
+                
+                Label info = new Label(r.display() + " - Price: " + price + " (You have: " + have + ")");
+                info.setStyle("-fx-fill: #eeeeee;");
+                
+                Button buyBtn = new Button("Buy");
+                buyBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
+                buyBtn.setOnAction(e -> {
+                    try {
+                        game.tradeWithMarket(game.getCurrentPlayerIndex(), Resource.CAPITAL, r);
+                        marketStage.close();
+                        updateResourcesDisplay();
+                        updateMarketDisplay();
+                        updateEventLog();
+                    } catch (Exception ex) {
+                        showError("Cannot buy: " + ex.getMessage());
+                    }
+                });
+                
+                Button sellBtn = new Button("Sell");
+                sellBtn.setStyle("-fx-background-color: #FF9800; -fx-text-fill: white;");
+                sellBtn.setOnAction(e -> {
+                    try {
+                        game.tradeWithMarket(game.getCurrentPlayerIndex(), r, Resource.CAPITAL);
+                        marketStage.close();
+                        updateResourcesDisplay();
+                        updateMarketDisplay();
+                        updateEventLog();
+                    } catch (Exception ex) {
+                        showError("Cannot sell: " + ex.getMessage());
+                    }
+                });
+                
+                row.getChildren().addAll(info, buyBtn, sellBtn);
+                marketBox.getChildren().add(row);
+            }
+        }
+        
+        marketBox.getChildren().addAll(title, capitalLabel);
+        
+        Scene scene = new Scene(marketBox, 500, 400);
+        marketStage.setScene(scene);
+        marketStage.setTitle("Market");
+        marketStage.show();
+    }
+    
+    private void enableActionButtons(boolean enabled) {
+        buildMVPButton.setDisable(!enabled);
+        upgradeButton.setDisable(!enabled);
+        buildPartnershipButton.setDisable(!enabled);
+        marketButton.setDisable(!enabled);
+        endTurnButton.setDisable(!enabled);
+    }
+    
+    private void endTurn() {
+        try {
+            game.endTurn();
+            enableActionButtons(false);
+            rollButton.setDisable(false);
+            
+            currentPlayerLabel.setText("Current: " + game.getPlayers().get(game.getCurrentPlayerIndex()).getName());
+            updateResourcesDisplay();
+            updateEventLog();
+            
+            if (game.isGameOver()) {
+                showWinner();
+            }
+        } catch (Exception ex) {
+            showError("End turn failed: " + ex.getMessage());
+        }
+    }
+    
+    private void saveGame() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Game Files", "*.sav"));
+        File file = fileChooser.showSaveDialog(primaryStage);
+        
+        if (file != null) {
+            try {
+                game.saveGame(file.getAbsolutePath());
+                showInfo("Game saved to " + file.getName());
+            } catch (GameException ex) {
+                showError("Save failed: " + ex.getMessage());
+            }
+        }
+    }
+    
+    private void loadGame() {
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Game Files", "*.sav"));
+        File file = fileChooser.showOpenDialog(primaryStage);
+        
+        if (file != null) {
+            try {
+                game = GameController.loadGame(file.getAbsolutePath());
+                showGameUI();
+            } catch (GameException ex) {
+                showError("Load failed: " + ex.getMessage());
+            }
+        }
+    }
+    
+    private void showRules() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Game Rules");
+        alert.setHeaderText("Silicon Valley: The Tech Cartel");
+        alert.setContentText(
+            "🏆 WIN: First to 10 points!\n\n" +
+            "⭐ SCORING:\n" +
+            "  • MVP: 1 point\n" +
+            "  • Unicorn: 2 points\n" +
+            "  • Longest Partnership: 2 points\n" +
+            "  • Founder Role: -1 point\n\n" +
+            "🎲 GAMEPLAY:\n" +
+            "  • Roll dice (2-12)\n" +
+            "  • Matching sectors produce resources\n" +
+            "  • Roll 7 = Crisis (Tax + Inspector)\n\n" +
+            "🏗️ BUILD:\n" +
+            "  • MVP: 1 each of Capital, Talent, Cloud, Data\n" +
+            "  • Unicorn: 3 Data, 2 Cloud\n" +
+            "  • Partnership: 1 Capital, 1 Patent"
+        );
+        alert.showAndWait();
+    }
+    
+    private void showWinner() {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Game Over");
+        alert.setHeaderText("🏆 " + game.getWinner().getName() + " wins! 🏆");
+        alert.setContentText("Final Score: " + game.getWinner().computeScore() + " points");
+        alert.showAndWait();
+        showMainMenu();
+    }
+    
+    private void showError(String message) {
+        Alert alert = new Alert(Alert.AlertType.ERROR);
+        alert.setTitle("Error");
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+    
+    private void showInfo(String message) {
+        Alert alert = new Alert(Alert.AlertType.INFORMATION);
+        alert.setTitle("Info");
+        alert.setContentText(message);
+        alert.showAndWait();
+    }
+    
+    public static void main(String[] args) {
+        launch(args);
     }
 }
