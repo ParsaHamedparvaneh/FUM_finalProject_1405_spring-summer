@@ -9,8 +9,6 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
 import javafx.stage.FileChooser;
-import javafx.animation.PauseTransition;
-import javafx.util.Duration;
 import java.util.*;
 import java.io.*;
 
@@ -1612,7 +1610,6 @@ public class Main extends Application
             descArea.setStyle("-fx-control-inner-background: #1a1a2e; -fx-text-fill: #cccccc;");
             descArea.setText("No special abilities");
             
-            final int playerIndex = idx;
             roleComboBoxes.add(roleCombo);
             descAreas.add(descArea);
             
@@ -1669,7 +1666,6 @@ public class Main extends Application
                 for (int i = 0; i < playerList.size(); i++) {
                     Player p = playerList.get(i);
                     ComboBox<String> cb = roleComboBoxes.get(i);
-                    String currentSelection = cb.getValue();
                     
                     cb.getItems().clear();
                     cb.getItems().add("No Role");
