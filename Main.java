@@ -3,6 +3,7 @@ import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
@@ -1440,8 +1441,8 @@ public class Main extends Application
                 double sceneY = startSceneY + r * (cellHeight + mapGrid.getVgap());
 
                 // تبدیل به مختصات محلی mapContainer
-                javafx.geometry.Point2D scenePoint = new javafx.geometry.Point2D(sceneX, sceneY);
-                javafx.geometry.Point2D localPoint = mapContainer.sceneToLocal(scenePoint);
+                Point2D scenePoint = new Point2D(sceneX, sceneY);
+                Point2D localPoint = mapContainer.sceneToLocal(scenePoint);
                 double localX = localPoint.getX();
                 double localY = localPoint.getY();
 
@@ -1483,41 +1484,23 @@ public class Main extends Application
 
     // پیدا کردن رأس بر اساس سطر و ستون گوشه (مختصات شبکه رئوس)
     private Vertex findVertexAtGridPosition(int row, int col) {
+        // مختصات سکتورهایی که باید در مجاورت این گوشه باشند
+        Set<String> expectedCoords = new HashSet<>();
+        int rows = game.getGameMap().getRows();
+        int cols = game.getGameMap().getCols();
+        
+        if (row > 0 && col > 0) expectedCoords.add((row-1) + "," + (col-1));
+        if (row > 0 && col < cols) expectedCoords.add((row-1) + "," + col);
+        if (row < rows && col > 0) expectedCoords.add(row + "," + (col-1));
+        if (row < rows && col < cols) expectedCoords.add(row + "," + col);
+        
         for (Vertex v : game.getGameMap().getVertices().values()) {
-            List<Sector> adj = v.getAdjacentSectors();
-            if (adj.isEmpty()) continue;
-
-            // پیدا کردن محدوده سکتورهای مجاور
-            int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
-            int maxRow = adj.stream().mapToInt(Sector::getRow).max().getAsInt();
-            int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
-            int maxCol = adj.stream().mapToInt(Sector::getCol).max().getAsInt();
-
-            // اگر رأس در گوشه یا لبه باشد (تعداد سکتورهای مجاور کمتر از ۴)
-            if (adj.size() == 1) {
-                // فقط یک سکتور مجاور – رأس در گوشه پایین-راست آن سکتور قرار دارد
-                Sector s = adj.get(0);
-                if (row == s.getRow() + 1 && col == s.getCol() + 1) return v;
-            } else if (adj.size() == 2) {
-                // لبه - بررسی می‌کنیم که آیا (row, col) روی لبه منطبق است
-                // لبه بالایی: هر دو سکتور در سطر minRow هستند و ستون‌ها minCol و maxCol
-                if (maxRow == minRow) {
-                    if (row == minRow && (col == minCol || col == maxCol)) return v;
-                }
-                // لبه عمودی: هر دو سکتور در ستون minCol هستند و سطرها minRow و maxRow
-                else if (maxCol == minCol) {
-                    if (col == minCol && (row == minRow || row == maxRow)) return v;
-                }
-                // لبه پایینی یا راستی (با دو سکتور در یک ردیف یا ستون)
-                else {
-                    // موارد دیگر
-                    if ((row == minRow && col == minCol) || (row == maxRow && col == maxCol)) return v;
-                }
-            } else {
-                // رأس داخلی (۴ سکتور مجاور) – مختصات گوشه برابر (maxRow, maxCol) است
-                if (row == maxRow && col == maxCol) return v;
-                // همچنین ممکن است رأس داخلی در (minRow, minCol) نباشد ولی برای اطمینان:
-                if (row == minRow+1 && col == minCol+1) return v;
+            Set<String> actualCoords = new HashSet<>();
+            for (Sector s : v.getAdjacentSectors()) {
+                actualCoords.add(s.getRow() + "," + s.getCol());
+            }
+            if (actualCoords.equals(expectedCoords)) {
+                return v;
             }
         }
         return null;
@@ -1532,7 +1515,6 @@ public class Main extends Application
                 game.buildMVP(currentPlayer.getId(), vertex.getId());
                 refreshVerticesOverlay();   // به‌روزرسانی رنگ دایره‌ها
                 updateMapGrid();            // به‌روزرسانی سکتورها (برای نمایش شرکت روی نقشه)
-                refreshVerticesOverlay();
                 updateResourcesDisplay();
                 updateEventLog();
                 showInfo("MVP built at vertex " + vertex.getId());
