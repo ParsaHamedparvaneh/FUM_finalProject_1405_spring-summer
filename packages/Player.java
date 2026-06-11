@@ -9,6 +9,7 @@ public class Player
     private ResourceCard resources;
     private List<Company> companies;
     private List<Partnership> partnerships;
+    private int bonusPoints = 0;
     private String role;
     private boolean hasPlacedInitial;
     
@@ -34,16 +35,6 @@ public class Player
     
     public boolean hasPlacedInitial()            { return hasPlacedInitial; }
     public void setPlacedInitial(boolean placed) { hasPlacedInitial = placed; }
-    
-    public int calculateScore()
-    {
-        int score = 0;
-        for (Company company : companies)
-            score += company.getScoreValue();
-        if (role != null)
-            score += Constants.ROLE_PENALTY;
-        return score;
-    }
     
     public int getLongestPartnershipChain(Map<Partnership, List<Partnership>> adjacency)
     {
@@ -91,6 +82,16 @@ public class Player
     public int getMaxCardsBeforeTax()
     {
         return (role != null && role.equals("VC-Funded")) ? Constants.VC_MAX_CARDS : Constants.NORMAL_MAX_CARDS;
+    }
+
+    public void addBonusPoints(int points) { this.bonusPoints += points; }
+
+    
+    public int calculateScore() {
+        int score = bonusPoints;
+        for (Company c : companies) score += c.getScoreValue();
+        if (role != null) score += Constants.ROLE_PENALTY;
+        return score;
     }
     
     public void payTax()

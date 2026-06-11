@@ -4,13 +4,13 @@ import java.io.*;
 import java.util.*;
 
 public class GameLogic implements Serializable {
-    private static final long serialVersionUID = 1L;
-    
+    private static final long serialVersionUID = 2L;
     private List<Player> players;
-    private Map<Integer, Player> playerMap;
+    private Map<Integer,Player> playerMap;
     private Sector[][] map;
     private Node[][] nodes;
-    private transient Edge[][] edges; // transient because edges can be reconstructed
+    private Edge[][] horizontalEdges;
+    private Edge[][] verticalEdges;
     private Market market;
     private int currentPlayerIndex;
     private int currentTurn;
@@ -23,12 +23,11 @@ public class GameLogic implements Serializable {
     public GameLogic(List<String> playerNames) {
         players = new ArrayList<>();
         playerMap = new HashMap<>();
-        for (int i = 0; i < playerNames.size(); i++) {
-            Player p = new Player(i + 1, playerNames.get(i));
+        for (int i=0; i<playerNames.size(); i++) {
+            Player p = new Player(i+1, playerNames.get(i));
             players.add(p);
             playerMap.put(p.getId(), p);
         }
-        
         initializeMap();
         initializeNodesAndEdges();
         market = new Market();
@@ -41,520 +40,389 @@ public class GameLogic implements Serializable {
     
     private void initializeMap() {
         map = new Sector[Constants.MAP_HEIGHT][Constants.MAP_WIDTH];
-        for (int i = 0; i < Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j < Constants.MAP_WIDTH; j++) {
-                // Randomly decide if this is a regulatory zone (10% chance)
-                boolean isRegulatory = Math.random() < 0.1;
-                if (isRegulatory) {
-                    map[i][j] = new Sector(i * Constants.SECTOR_SIZE, j * Constants.SECTOR_SIZE, true);
-                } else {
-                    map[i][j] = new Sector(i * Constants.SECTOR_SIZE, j * Constants.SECTOR_SIZE);
-                }
+        Random rand = new Random();
+        for (int i=0; i<Constants.MAP_HEIGHT; i++) {
+            for (int j=0; j<Constants.MAP_WIDTH; j++) {
+                boolean reg = rand.nextDouble() < 0.1;
+                if (reg) map[i][j] = new Sector(i*Constants.SECTOR_SIZE, j*Constants.SECTOR_SIZE, true);
+                else map[i][j] = new Sector(i*Constants.SECTOR_SIZE, j*Constants.SECTOR_SIZE);
             }
         }
     }
     
     private void initializeNodesAndEdges() {
-        // Create 6x6 nodes (for 5x5 sectors)
-        nodes = new Node[Constants.MAP_HEIGHT + 1][Constants.MAP_WIDTH + 1];
-        for (int i = 0; i <= Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j <= Constants.MAP_WIDTH; j++) {
-                nodes[i][j] = new Node(i * Constants.SECTOR_SIZE, j * Constants.SECTOR_SIZE);
+        nodes = new Node[Constants.MAP_HEIGHT+1][Constants.MAP_WIDTH+1];
+        for (int i=0; i<=Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<=Constants.MAP_WIDTH; j++)
+                nodes[i][j] = new Node(i*Constants.SECTOR_SIZE, j*Constants.SECTOR_SIZE);
+        
+        for (int i=0; i<Constants.MAP_HEIGHT; i++) {
+            for (int j=0; j<Constants.MAP_WIDTH; j++) {
+                Sector s = map[i][j];
+                s.getNodes()[0] = nodes[i][j];
+                s.getNodes()[1] = nodes[i][j+1];
+                s.getNodes()[2] = nodes[i+1][j];
+                s.getNodes()[3] = nodes[i+1][j+1];
+                nodes[i][j].addAdjacentSector(s);
+                nodes[i][j+1].addAdjacentSector(s);
+                nodes[i+1][j].addAdjacentSector(s);
+                nodes[i+1][j+1].addAdjacentSector(s);
             }
         }
-        
-        // Connect nodes to adjacent sectors
-        for (int i = 0; i < Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j < Constants.MAP_WIDTH; j++) {
-                Sector sector = map[i][j];
-                sector.getNodes()[0] = nodes[i][j];       // top-left
-                sector.getNodes()[1] = nodes[i][j+1];     // top-right
-                sector.getNodes()[2] = nodes[i+1][j];     // bottom-left
-                sector.getNodes()[3] = nodes[i+1][j+1];   // bottom-right
-                
-                // Add sector to nodes' adjacent sectors
-                nodes[i][j].addAdjacentSector(sector);
-                nodes[i][j+1].addAdjacentSector(sector);
-                nodes[i+1][j].addAdjacentSector(sector);
-                nodes[i+1][j+1].addAdjacentSector(sector);
-            }
-        }
-        
-        // Create edges (horizontal)
-        edges = new Edge[Constants.MAP_HEIGHT + 1][Constants.MAP_WIDTH];
-        for (int i = 0; i <= Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j < Constants.MAP_WIDTH; j++) {
-                edges[i][j] = new Edge(nodes[i][j], nodes[i][j+1]);
-                // Add adjacent sectors to this edge
-                if (i > 0 && i <= Constants.MAP_HEIGHT) {
-                    if (j < Constants.MAP_WIDTH) {
-                        edges[i][j].addAdjacentSector(map[i-1][j]);
-                    }
-                }
-                if (i < Constants.MAP_HEIGHT) {
-                    if (j < Constants.MAP_WIDTH) {
-                        edges[i][j].addAdjacentSector(map[i][j]);
-                    }
-                }
-            }
-        }
-        
-        // Create vertical edges
-        Edge[][] verticalEdges = new Edge[Constants.MAP_HEIGHT][Constants.MAP_WIDTH + 1];
-        for (int i = 0; i < Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j <= Constants.MAP_WIDTH; j++) {
+        // horizontal edges
+        horizontalEdges = new Edge[Constants.MAP_HEIGHT+1][Constants.MAP_WIDTH];
+        for (int i=0; i<=Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<Constants.MAP_WIDTH; j++)
+                horizontalEdges[i][j] = new Edge(nodes[i][j], nodes[i][j+1]);
+        // vertical edges
+        verticalEdges = new Edge[Constants.MAP_HEIGHT][Constants.MAP_WIDTH+1];
+        for (int i=0; i<Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<=Constants.MAP_WIDTH; j++)
                 verticalEdges[i][j] = new Edge(nodes[i][j], nodes[i+1][j]);
-                if (i < Constants.MAP_HEIGHT) {
-                    if (j > 0 && j <= Constants.MAP_WIDTH) {
-                        verticalEdges[i][j].addAdjacentSector(map[i][j-1]);
-                    }
-                    if (j < Constants.MAP_WIDTH) {
-                        verticalEdges[i][j].addAdjacentSector(map[i][j]);
-                    }
-                }
-            }
-        }
-        
-        // Combine edges into one array for easier access (optional)
-        // For simplicity, we'll just use horizontal edges in this implementation
     }
     
     public void startGame() {
-        eventLog.add("🎮 Game started with " + players.size() + " players!");
+        eventLog.add("Game started with " + players.size() + " players.");
         performInitialPlacement();
     }
     
     private void performInitialPlacement() {
-        eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        eventLog.add("📍 INITIAL PLACEMENT PHASE");
-        eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        
-        // Round 1: Each player places MVP and Partnership in order
-        for (Player player : players) {
-            Node availableNode = findAvailableNodeForPlacement();
-            if (availableNode != null) {
-                placeMVP(player, availableNode, true);
-                Edge adjacentEdge = findAdjacentFreeEdge(availableNode);
-                if (adjacentEdge != null) {
-                    placePartnership(player, adjacentEdge, true);
+        // Round 1: each player places MVP + Partnership (free)
+        for (Player p : players) {
+            Node node = findAvailableNode();
+            if (node != null) {
+                MVP mvp = new MVP(p, node);
+                p.getCompanies().add(mvp);
+                node.setCompany(mvp);
+                eventLog.add(p.getName() + " placed free MVP at ("+node.getPosition().x/Constants.SECTOR_SIZE+","+node.getPosition().y/Constants.SECTOR_SIZE+")");
+                // place Partnership on an adjacent edge
+                Edge edge = findAdjacentFreeEdge(node);
+                if (edge != null) {
+                    Partnership part = new Partnership(p, edge);
+                    p.getPartnerships().add(part);
+                    edge.setPartnership(part);
+                    eventLog.add(p.getName() + " placed free Partnership.");
                 }
             }
         }
-        
-        // Round 2: Reverse order
-        eventLog.add("Round 2 (Reverse Order):");
-        for (int i = players.size() - 1; i >= 0; i--) {
-            Player player = players.get(i);
-            Node availableNode = findAvailableNodeForPlacement();
-            if (availableNode != null) {
-                placeMVP(player, availableNode, true);
-                Edge adjacentEdge = findAdjacentFreeEdge(availableNode);
-                if (adjacentEdge != null) {
-                    placePartnership(player, adjacentEdge, true);
+        // Round 2: reverse order, again MVP + Partnership
+        for (int i=players.size()-1; i>=0; i--) {
+            Player p = players.get(i);
+            Node node = findAvailableNode();
+            if (node != null) {
+                MVP mvp = new MVP(p, node);
+                p.getCompanies().add(mvp);
+                node.setCompany(mvp);
+                eventLog.add(p.getName() + " placed second free MVP at ("+node.getPosition().x/Constants.SECTOR_SIZE+","+node.getPosition().y/Constants.SECTOR_SIZE+")");
+                Edge edge = findAdjacentFreeEdge(node);
+                if (edge != null) {
+                    Partnership part = new Partnership(p, edge);
+                    p.getPartnerships().add(part);
+                    edge.setPartnership(part);
+                    eventLog.add(p.getName() + " placed second free Partnership.");
                 }
-            }
-        }
-        
-        // Give initial resources from second MVP
-        eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        eventLog.add("📦 Granting initial resources...");
-        for (Player player : players) {
-            // Find the player's second MVP (most recently placed)
-            List<Company> companies = player.getCompanies();
-            if (companies.size() >= 2) {
-                Company secondMVP = companies.get(companies.size() - 1);
-                Node pos = secondMVP.getPosition();
-                for (Sector sector : pos.getAdjacentSectors()) {
-                    String resource = sector.getResourceType();
-                    if (resource != null) {
-                        player.getResources().addResource(resource, 1);
-                        eventLog.add("  " + player.getName() + " gained 1 " + resource + " from initial placement");
+                // Give initial resources from this MVP's adjacent sectors
+                for (Sector s : node.getAdjacentSectors()) {
+                    String res = s.getResourceType();
+                    if (res != null) {
+                        p.getResources().addResource(res, 1);
+                        eventLog.add(p.getName() + " gained 1 " + res + " from initial placement.");
                     }
                 }
             }
         }
-        
-        eventLog.add("✅ Initial placement completed!");
-        eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        eventLog.add("Initial placement completed.");
     }
     
-    private Node findAvailableNodeForPlacement() {
-        for (int i = 0; i <= Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j <= Constants.MAP_WIDTH; j++) {
-                Node node = nodes[i][j];
-                if (!node.hasCompany() && isValidPlacement(node)) {
-                    return node;
-                }
-            }
-        }
+    private Node findAvailableNode() {
+        for (int i=0; i<=Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<=Constants.MAP_WIDTH; j++)
+                if (!nodes[i][j].hasCompany() && isValidPlacement(nodes[i][j]))
+                    return nodes[i][j];
         return null;
     }
     
     public boolean isValidPlacement(Node node) {
-        // Check distance rule: at least 2 edges away from other companies
-        for (int i = 0; i <= Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j <= Constants.MAP_WIDTH; j++) {
+        for (int i=0; i<=Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<=Constants.MAP_WIDTH; j++) {
                 Node other = nodes[i][j];
                 if (other.hasCompany() && other != node) {
                     int dx = Math.abs(node.getPosition().x - other.getPosition().x);
                     int dy = Math.abs(node.getPosition().y - other.getPosition().y);
-                    // Need at least 2 edges distance (200 pixels since each sector is 100)
-                    if (dx <= Constants.SECTOR_SIZE * 2 && dy <= Constants.SECTOR_SIZE * 2) {
+                    if (dx <= Constants.SECTOR_SIZE*2 && dy <= Constants.SECTOR_SIZE*2)
                         return false;
-                    }
                 }
             }
-        }
         return true;
     }
     
     private Edge findAdjacentFreeEdge(Node node) {
-        // Search for an edge connected to this node
-        for (int i = 0; i <= Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j < Constants.MAP_WIDTH; j++) {
-                Edge edge = edges[i][j];
-                if (edge != null && !edge.hasPartnership() && 
-                    (edge.getNode1().equals(node) || edge.getNode2().equals(node))) {
-                    return edge;
-                }
-            }
-        }
+        for (int i=0; i<=Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<Constants.MAP_WIDTH; j++)
+                if (horizontalEdges[i][j] != null && !horizontalEdges[i][j].hasPartnership() &&
+                    (horizontalEdges[i][j].getNode1().equals(node) || horizontalEdges[i][j].getNode2().equals(node)))
+                    return horizontalEdges[i][j];
+        for (int i=0; i<Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<=Constants.MAP_WIDTH; j++)
+                if (verticalEdges[i][j] != null && !verticalEdges[i][j].hasPartnership() &&
+                    (verticalEdges[i][j].getNode1().equals(node) || verticalEdges[i][j].getNode2().equals(node)))
+                    return verticalEdges[i][j];
         return null;
     }
     
-    private void placeMVP(Player player, Node node, boolean isFree) {
+    public void buildMVP(Player player, Node node) throws InvalidPlacementException, InsufficientResourcesException {
+        if (!isValidPlacement(node)) throw new InvalidPlacementException("Too close to another company.");
+        if (node.hasCompany()) throw new InvalidPlacementException("Node already occupied.");
+        Map<String,Integer> cost = new HashMap<>();
+        cost.put(Constants.RESOURCE_TALENT, Constants.MVP_COST_TALENT);
+        cost.put(Constants.RESOURCE_CAPITAL, Constants.MVP_COST_CAPITAL);
+        cost.put(Constants.RESOURCE_CLOUD, Constants.MVP_COST_CLOUD);
+        cost.put(Constants.RESOURCE_DATA, Constants.MVP_COST_DATA);
+        if (!player.getResources().hasEnough(cost)) throw new InsufficientResourcesException("Not enough resources.");
+        player.getResources().deductResources(cost);
         MVP mvp = new MVP(player, node);
         player.getCompanies().add(mvp);
         node.setCompany(mvp);
-        if (isFree) {
-            eventLog.add("  " + player.getName() + " placed free MVP at (" + 
-                        node.getPosition().x/Constants.SECTOR_SIZE + "," + 
-                        node.getPosition().y/Constants.SECTOR_SIZE + ")");
-        }
+        eventLog.add(player.getName() + " built MVP at ("+node.getPosition().x/Constants.SECTOR_SIZE+","+node.getPosition().y/Constants.SECTOR_SIZE+")");
     }
     
-    private void placePartnership(Player player, Edge edge, boolean isFree) {
-        Partnership partnership = new Partnership(player, edge);
-        player.getPartnerships().add(partnership);
-        edge.setPartnership(partnership);
-        if (isFree) {
-            eventLog.add("  " + player.getName() + " placed free Partnership");
-        }
+    public void upgradeToUnicorn(Player player, MVP mvp) throws InsufficientResourcesException {
+        int cloudCost = Constants.UNICORN_UPGRADE_CLOUD;
+        int dataCost = Constants.UNICORN_UPGRADE_DATA;
+        if (player.getRole() != null && player.getRole().equals("CTO")) cloudCost -= Constants.CLOUD_DISCOUNT;
+        if (player.getResources().getCount(Constants.RESOURCE_CLOUD) < cloudCost ||
+            player.getResources().getCount(Constants.RESOURCE_DATA) < dataCost)
+            throw new InsufficientResourcesException("Need " + cloudCost + " Cloud and " + dataCost + " Data.");
+        player.getResources().removeResource(Constants.RESOURCE_CLOUD, cloudCost);
+        player.getResources().removeResource(Constants.RESOURCE_DATA, dataCost);
+        player.getCompanies().remove(mvp);
+        Unicorn uni = new Unicorn(player, mvp.getPosition());
+        player.getCompanies().add(uni);
+        mvp.getPosition().setCompany(uni);
+        eventLog.add(player.getName() + " upgraded MVP to UNICORN!");
+    }
+    
+    public void buildPartnership(Player player, Edge edge) throws InvalidPlacementException, InsufficientResourcesException {
+        if (edge.hasPartnership()) throw new InvalidPlacementException("Edge already has a partnership.");
+        // check connectivity: edge must touch one of player's companies
+        boolean connected = false;
+        Node n1 = edge.getNode1(), n2 = edge.getNode2();
+        if (n1.hasCompany() && n1.getCompany().getOwner() == player) connected = true;
+        if (n2.hasCompany() && n2.getCompany().getOwner() == player) connected = true;
+        if (!connected) throw new InvalidPlacementException("Must be connected to your company.");
+        Map<String,Integer> cost = new HashMap<>();
+        cost.put(Constants.RESOURCE_PATENT, Constants.PARTNERSHIP_COST_PATENT);
+        cost.put(Constants.RESOURCE_CAPITAL, Constants.PARTNERSHIP_COST_CAPITAL);
+        if (!player.getResources().hasEnough(cost)) throw new InsufficientResourcesException("Not enough resources.");
+        player.getResources().deductResources(cost);
+        Partnership part = new Partnership(player, edge);
+        player.getPartnerships().add(part);
+        edge.setPartnership(part);
+        eventLog.add(player.getName() + " built a Partnership.");
+    }
+    
+    public List<Edge> getValidPartnershipEdges(Player player) {
+        List<Edge> edges = new ArrayList<>();
+        for (int i=0; i<=Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<Constants.MAP_WIDTH; j++)
+                if (!horizontalEdges[i][j].hasPartnership()) edges.add(horizontalEdges[i][j]);
+        for (int i=0; i<Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<=Constants.MAP_WIDTH; j++)
+                if (!verticalEdges[i][j].hasPartnership()) edges.add(verticalEdges[i][j]);
+        // filter only those connected to player
+        edges.removeIf(e -> {
+            Node n1=e.getNode1(), n2=e.getNode2();
+            return !( (n1.hasCompany() && n1.getCompany().getOwner()==player) ||
+                      (n2.hasCompany() && n2.getCompany().getOwner()==player) );
+        });
+        return edges;
     }
     
     public void rollDice() {
-        Random rand = new Random();
-        int die1 = rand.nextInt(6) + 1;
-        int die2 = rand.nextInt(6) + 1;
-        currentDiceSum = die1 + die2;
-        eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-        eventLog.add("🎲 " + getCurrentPlayer().getName() + " rolled " + die1 + " + " + die2 + " = " + currentDiceSum);
-        
-        if (currentDiceSum == 7) {
-            handleRegulatoryCrisis();
-        } else {
-            produceResources();
-        }
-        eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
+        Random r = new Random();
+        int d1 = r.nextInt(6)+1, d2 = r.nextInt(6)+1;
+        currentDiceSum = d1+d2;
+        eventLog.add("🎲 " + getCurrentPlayer().getName() + " rolled " + d1 + "+" + d2 + " = " + currentDiceSum);
+        if (currentDiceSum == 7) handleRegulatoryCrisis();
+        else produceResources();
     }
     
     private void produceResources() {
-        boolean produced = false;
-        for (int i = 0; i < Constants.MAP_HEIGHT; i++) {
-            for (int j = 0; j < Constants.MAP_WIDTH; j++) {
-                Sector sector = map[i][j];
-                if (sector.canProduce() && sector.getDiceNumber() == currentDiceSum) {
-                    String resource = sector.getResourceType();
-                    if (resource != null) {
-                        // Find players with companies on adjacent nodes
+        boolean any = false;
+        for (int i=0; i<Constants.MAP_HEIGHT; i++) {
+            for (int j=0; j<Constants.MAP_WIDTH; j++) {
+                Sector s = map[i][j];
+                if (s.canProduce() && s.getDiceNumber() == currentDiceSum) {
+                    String res = s.getResourceType();
+                    if (res != null) {
                         Set<Player> producers = new HashSet<>();
-                        Node[] sectorNodes = sector.getNodes();
-                        for (Node node : sectorNodes) {
-                            if (node != null && node.hasCompany()) {
-                                producers.add(node.getCompany().getOwner());
-                            }
-                        }
-                        
-                        for (Player player : producers) {
+                        for (Node n : s.getNodes()) if (n!=null && n.hasCompany()) producers.add(n.getCompany().getOwner());
+                        for (Player p : producers) {
                             int amount = 1;
-                            // Check if Unicorn (produces 2)
-                            for (Company company : player.getCompanies()) {
-                                if (company instanceof Unicorn) {
-                                    Node[] companyNodes = sector.getNodes();
-                                    for (Node n : companyNodes) {
-                                        if (n != null && company.getPosition().equals(n)) {
-                                            amount = 2;
-                                            break;
-                                        }
-                                    }
-                                }
+                            for (Company c : p.getCompanies()) {
+                                if (c instanceof Unicorn && c.getPosition().equals(s.getNodes()[0])) { amount = 2; break; }
                             }
-                            player.getResources().addResource(resource, amount);
-                            eventLog.add("  📦 " + player.getName() + " gained " + amount + " " + resource + " from sector (" + i + "," + j + ")");
-                            produced = true;
+                            p.getResources().addResource(res, amount);
+                            eventLog.add(p.getName() + " gained " + amount + " " + res);
+                            any = true;
                         }
                     }
                 }
             }
         }
-        if (!produced) {
-            eventLog.add("  No sectors produced resources this turn.");
-        }
+        if (!any) eventLog.add("No production this turn.");
     }
     
     private void handleRegulatoryCrisis() {
-        eventLog.add("⚠️ REGULATORY CRISIS! (Sum = 7) ⚠️");
-        
-        // Apply tax to all players
-        eventLog.add("💰 TAX COLLECTION:");
-        for (Player player : players) {
-            int beforeTax = player.getResources().getTotalCards();
-            player.payTax();
-            int afterTax = player.getResources().getTotalCards();
-            if (beforeTax > player.getMaxCardsBeforeTax()) {
-                eventLog.add("  " + player.getName() + " had " + beforeTax + " cards, paid tax → " + afterTax + " cards");
-            } else {
-                eventLog.add("  " + player.getName() + " had " + beforeTax + " cards, below threshold, no tax");
-            }
+        eventLog.add("⚠️ Regulatory Crisis! (sum=7)");
+        for (Player p : players) {
+            int before = p.getResources().getTotalCards();
+            p.payTax();
+            int after = p.getResources().getTotalCards();
+            if (before > after) eventLog.add(p.getName() + " paid tax: " + before + " → " + after);
         }
-        
-        // Move auditor
-        if (auditorPosition != null) {
-            Sector oldSector = map[auditorPosition.x][auditorPosition.y];
-            if (oldSector != null) {
-                oldSector.setAuditor(false);
-            }
-        }
-        
-        // Find a valid sector with at least one company
-        boolean auditorPlaced = false;
-        for (int i = 0; i < Constants.MAP_HEIGHT && !auditorPlaced; i++) {
-            for (int j = 0; j < Constants.MAP_WIDTH && !auditorPlaced; j++) {
-                Sector sector = map[i][j];
-                for (Node node : sector.getNodes()) {
-                    if (node != null && node.hasCompany()) {
-                        auditorPosition = new Point(i, j);
-                        sector.setAuditor(true);
-                        eventLog.add("🔍 Auditor placed at sector (" + i + "," + j + ") - This sector will not produce resources!");
-                        auditorPlaced = true;
-                        break;
-                    }
-                }
-            }
-        }
-        
-        if (!auditorPlaced) {
-            // Place on any sector if none have companies
-            for (int i = 0; i < Constants.MAP_HEIGHT && !auditorPlaced; i++) {
-                for (int j = 0; j < Constants.MAP_WIDTH && !auditorPlaced; j++) {
-                    auditorPosition = new Point(i, j);
+        if (auditorPosition != null) map[auditorPosition.x][auditorPosition.y].setAuditor(false);
+        for (int i=0; i<Constants.MAP_HEIGHT; i++)
+            for (int j=0; j<Constants.MAP_WIDTH; j++) {
+                boolean hasCompany = false;
+                for (Node n : map[i][j].getNodes()) if (n!=null && n.hasCompany()) { hasCompany = true; break; }
+                if (hasCompany) {
+                    auditorPosition = new Point(i,j);
                     map[i][j].setAuditor(true);
-                    eventLog.add("🔍 Auditor placed at sector (" + i + "," + j + ")");
-                    auditorPlaced = true;
+                    eventLog.add("Auditor placed at ("+i+","+j+")");
+                    return;
                 }
             }
-        }
-    }
-    
-    public void buildMVP(Player player, Node position, Map<String, Integer> resources) 
-            throws InvalidPlacementException, InsufficientResourcesException {
-        
-        if (!isValidPlacement(position)) {
-            throw new InvalidPlacementException("Invalid placement location: Must be at least 2 edges away from other companies");
-        }
-        
-        if (position.hasCompany()) {
-            throw new InvalidPlacementException("This node already has a company");
-        }
-        
-        if (!player.getResources().hasEnough(resources)) {
-            throw new InsufficientResourcesException("Not enough resources to build MVP");
-        }
-        
-        player.getResources().deductResources(resources);
-        MVP mvp = new MVP(player, position);
-        player.getCompanies().add(mvp);
-        position.setCompany(mvp);
-        
-        eventLog.add("🏗️ " + player.getName() + " built MVP at (" + 
-                    position.getPosition().x/Constants.SECTOR_SIZE + "," + 
-                    position.getPosition().y/Constants.SECTOR_SIZE + ")");
-    }
-    
-    public void upgradeToUnicorn(Player player, MVP mvp) 
-            throws InsufficientResourcesException {
-        
-        int cloudCost = Constants.UNICORN_UPGRADE_CLOUD;
-        int dataCost = Constants.UNICORN_UPGRADE_DATA;
-        
-        // Check for CTO discount
-        if (player.getRole() != null && player.getRole().equals("CTO")) {
-            cloudCost -= Constants.CLOUD_DISCOUNT;
-            eventLog.add("  CTO discount applied! Cloud cost reduced to " + cloudCost);
-        }
-        
-        if (player.getResources().getCount(Constants.RESOURCE_CLOUD) >= cloudCost &&
-            player.getResources().getCount(Constants.RESOURCE_DATA) >= dataCost) {
-            
-            player.getResources().removeResource(Constants.RESOURCE_CLOUD, cloudCost);
-            player.getResources().removeResource(Constants.RESOURCE_DATA, dataCost);
-            
-            // Replace MVP with Unicorn
-            player.getCompanies().remove(mvp);
-            Unicorn unicorn = new Unicorn(player, mvp.getPosition());
-            player.getCompanies().add(unicorn);
-            mvp.getPosition().setCompany(unicorn);
-            
-            eventLog.add("🦄 " + player.getName() + " upgraded MVP to UNICORN! (+2 points)");
-        } else {
-            throw new InsufficientResourcesException("Not enough resources to upgrade to Unicorn. Need " + 
-                cloudCost + " Cloud and " + dataCost + " Data");
-        }
-    }
-    
-    public void buildPartnership(Player player, Edge edge, Map<String, Integer> resources)
-            throws InvalidPlacementException, InsufficientResourcesException {
-        
-        if (edge.hasPartnership()) {
-            throw new InvalidPlacementException("Edge already has a partnership");
-        }
-        
-        // Check if connected to player's existing structures
-        boolean connected = false;
-        if (edge.getNode1().hasCompany() && edge.getNode1().getCompany().getOwner() == player) {
-            connected = true;
-        }
-        if (edge.getNode2().hasCompany() && edge.getNode2().getCompany().getOwner() == player) {
-            connected = true;
-        }
-        
-        if (!connected) {
-            throw new InvalidPlacementException("Partnership must be connected to one of your existing companies");
-        }
-        
-        if (!player.getResources().hasEnough(resources)) {
-            throw new InsufficientResourcesException("Not enough resources to build Partnership");
-        }
-        
-        player.getResources().deductResources(resources);
-        Partnership partnership = new Partnership(player, edge);
-        player.getPartnerships().add(partnership);
-        edge.setPartnership(partnership);
-        
-        eventLog.add("🤝 " + player.getName() + " built a Partnership!");
+        auditorPosition = new Point(0,0);
+        map[0][0].setAuditor(true);
     }
     
     public void endTurn() {
-        Player currentPlayer = getCurrentPlayer();
-        
-        // Calculate longest partnership chain for bonus
-        int longestChain = calculateLongestPartnershipChain();
-        for (Player player : players) {
-            int playerChain = player.getLongestPartnershipChain(getPartnershipAdjacency());
-            if (playerChain >= 3 && playerChain == longestChain) {
-                // In a real implementation, track who had it first
-                eventLog.add("🏆 " + player.getName() + " has the longest partnership chain (" + playerChain + ")");
-            }
+        Player current = getCurrentPlayer();
+        int score = current.calculateScore();
+        // bonus for longest partnership chain (simplified: any chain length >=3 gives 2 points)
+        int longest = 0;
+        for (Player p : players) {
+            int chain = getLongestPartnershipChain(p);
+            if (chain > longest) longest = chain;
         }
-        
-        int score = currentPlayer.calculateScore();
-        eventLog.add("📊 " + currentPlayer.getName() + " ends turn with " + score + " points");
-        
-        if (score >= Constants.WIN_SCORE) {
-            gameFinished = true;
-            winner = currentPlayer;
-            eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            eventLog.add("🏆🏆🏆 " + currentPlayer.getName().toUpperCase() + " WINS THE GAME! 🏆🏆🏆");
-            eventLog.add("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-            return;
-        }
-        
-        currentPlayerIndex = (currentPlayerIndex + 1) % players.size();
-        currentTurn++;
-        market.newTurn();
-        eventLog.add("➡️ Turn ended. Next player: " + getCurrentPlayer().getName());
-        eventLog.add("");
-    }
-    
-    private int calculateLongestPartnershipChain() {
-        int maxChain = 0;
-        for (Player player : players) {
-            int chain = player.getLongestPartnershipChain(getPartnershipAdjacency());
-            maxChain = Math.max(maxChain, chain);
-        }
-        return maxChain;
-    }
-    
-    private Map<Partnership, List<Partnership>> getPartnershipAdjacency() {
-        Map<Partnership, List<Partnership>> adjacency = new HashMap<>();
-        
-        // Collect all partnerships
-        List<Partnership> allPartnerships = new ArrayList<>();
-        for (Player player : players) {
-            allPartnerships.addAll(player.getPartnerships());
-        }
-        
-        // Build adjacency based on shared nodes
-        for (Partnership p1 : allPartnerships) {
-            adjacency.putIfAbsent(p1, new ArrayList<>());
-            for (Partnership p2 : allPartnerships) {
-                if (p1 != p2) {
-                    if (p1.getEdge().getNode1().equals(p2.getEdge().getNode1()) ||
-                        p1.getEdge().getNode1().equals(p2.getEdge().getNode2()) ||
-                        p1.getEdge().getNode2().equals(p2.getEdge().getNode1()) ||
-                        p1.getEdge().getNode2().equals(p2.getEdge().getNode2())) {
-                        adjacency.get(p1).add(p2);
-                    }
+        if (longest >= 3) {
+            // find player(s) with that length (first one keeps it – simplified)
+            for (Player p : players) {
+                if (getLongestPartnershipChain(p) == longest) {
+                    eventLog.add(p.getName() + " gets +2 points for longest Partnership chain!");
+                    // we add directly to score? Score is dynamic, but we need to add bonus.
+                    // For simplicity, we'll add a temporary bonus – but real implementation should store.
+                    // I'll add a separate bonus method.
+                    addLongestChainBonus(p, 2);
+                    break;
                 }
             }
         }
-        
-        return adjacency;
+        eventLog.add(current.getName() + " ends turn with " + current.calculateScore() + " points.");
+        if (current.calculateScore() >= Constants.WIN_SCORE) {
+            gameFinished = true;
+            winner = current;
+            eventLog.add(current.getName() + " WINS!");
+            return;
+        }
+        currentPlayerIndex = (currentPlayerIndex+1) % players.size();
+        currentTurn++;
+        market.newTurn();
+        eventLog.add("Next player: " + getCurrentPlayer().getName());
+    }
+    
+    private int getLongestPartnershipChain(Player player) {
+        Map<Partnership, List<Partnership>> adj = new HashMap<>();
+        List<Partnership> all = new ArrayList<>(player.getPartnerships());
+        for (Partnership p1 : all) {
+            adj.put(p1, new ArrayList<>());
+            for (Partnership p2 : all) {
+                if (p1 == p2) continue;
+                if (p1.getEdge().getNode1().equals(p2.getEdge().getNode1()) ||
+                    p1.getEdge().getNode1().equals(p2.getEdge().getNode2()) ||
+                    p1.getEdge().getNode2().equals(p2.getEdge().getNode1()) ||
+                    p1.getEdge().getNode2().equals(p2.getEdge().getNode2())) {
+                    adj.get(p1).add(p2);
+                }
+            }
+        }
+        Set<Partnership> visited = new HashSet<>();
+        int max = 0;
+        for (Partnership p : all) {
+            if (!visited.contains(p)) {
+                int len = bfsLength(p, adj, visited);
+                max = Math.max(max, len);
+            }
+        }
+        return max;
+    }
+    
+    private int bfsLength(Partnership start, Map<Partnership,List<Partnership>> adj, Set<Partnership> visited) {
+        Queue<Partnership> q = new LinkedList<>();
+        Map<Partnership,Integer> dist = new HashMap<>();
+        q.add(start);
+        dist.put(start,1);
+        int max=1;
+        while(!q.isEmpty()) {
+            Partnership cur = q.poll();
+            visited.add(cur);
+            int d = dist.get(cur);
+            max = Math.max(max, d);
+            for (Partnership nb : adj.getOrDefault(cur, new ArrayList<>())) {
+                if (!dist.containsKey(nb)) {
+                    dist.put(nb, d+1);
+                    q.add(nb);
+                }
+            }
+        }
+        return max;
+    }
+    
+    private void addLongestChainBonus(Player player, int bonus) {
+        // We'll store a temporary bonus in a map or add directly to score via a separate field.
+        // For simplicity, I'll add a "bonusScore" field to Player. But to avoid modifying Player class now,
+        // we'll just give resources as compensation? No, must be points. So let's add a field to Player.
+        // Since Player already has calculateScore, we can add a transient bonusPoints.
+        player.addBonusPoints(bonus);
     }
     
     public void assignRole(Player player, String roleName) {
         player.setRole(roleName);
-        
-        // Apply role benefits
         if (roleName.equals("VC-Funded")) {
             player.getResources().addResource(Constants.RESOURCE_CAPITAL, Constants.VC_EXTRA_CAPITAL);
-            eventLog.add("💎 " + player.getName() + " takes the VC-Funded role! +" + Constants.VC_EXTRA_CAPITAL + " Capital");
+            eventLog.add(player.getName() + " took VC-Funded role (+2 Capital)");
         } else if (roleName.equals("Trader")) {
-            eventLog.add("💎 " + player.getName() + " takes the Trader role! Better market rates");
+            eventLog.add(player.getName() + " took Trader role (better market rates)");
         } else if (roleName.equals("CTO")) {
-            eventLog.add("💎 " + player.getName() + " takes the CTO role! Cheaper Unicorn upgrades");
+            eventLog.add(player.getName() + " took CTO role (cheaper Unicorn)");
         }
-        
-        eventLog.add("  (Role penalty: -1 point)");
     }
     
-    // Getters
+    // Getters, setters, save/load etc.
     public List<Player> getPlayers() { return players; }
-    public Player getPlayerById(int id) { return playerMap.get(id); }
     public Player getCurrentPlayer() { return players.get(currentPlayerIndex); }
-    public int getCurrentPlayerIndex() { return currentPlayerIndex; }
-    public void setCurrentPlayerIndex(int index) { this.currentPlayerIndex = index; }
-    public int getCurrentTurn() { return currentTurn; }
-    public void setCurrentTurn(int turn) { this.currentTurn = turn; }
-    public Point getAuditorPosition() { return auditorPosition; }
-    public void setAuditorPosition(Point pos) { this.auditorPosition = pos; }
-    public List<String> getEventLog() { return eventLog; }
-    public void setEventLog(List<String> log) { this.eventLog = log; }
     public Sector[][] getMap() { return map; }
     public Node[][] getNodes() { return nodes; }
     public Market getMarket() { return market; }
     public Player getWinner() { return winner; }
     public boolean isGameFinished() { return gameFinished; }
+    public List<String> getEventLog() { return eventLog; }
+    public Point getAuditorPosition() { return auditorPosition; }
+    public void setAuditorPosition(Point p) { auditorPosition = p; }
+    public void setCurrentPlayerIndex(int idx) { currentPlayerIndex = idx; }
+    public void setCurrentTurn(int turn) { currentTurn = turn; }
+    public void setEventLog(List<String> log) { eventLog = log; }
+    public Player getPlayerById(int id) { return playerMap.get(id); }
     
-    public void setGameFinished(boolean finished) { this.gameFinished = finished; }
-    public void setWinner(Player winner) { this.winner = winner; }
-    
-    // Save/Load methods
-    public void saveGame(String filepath) throws IOException {
-        SaveLoadManager.saveGame(this, filepath);
+    public void saveGame(String path) throws IOException {
+        try (ObjectOutputStream oos = new ObjectOutputStream(new FileOutputStream(path))) {
+            oos.writeObject(this);
+        }
     }
-    
-    public static GameLogic loadGame(String filepath) throws IOException, ClassNotFoundException {
-        return SaveLoadManager.loadGame(filepath);
+    public static GameLogic loadGame(String path) throws IOException, ClassNotFoundException {
+        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(path))) {
+            return (GameLogic) ois.readObject();
+        }
     }
 }
