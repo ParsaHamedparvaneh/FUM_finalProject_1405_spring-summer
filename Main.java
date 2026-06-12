@@ -2103,6 +2103,20 @@ public class Main extends Application
         roleStage.setScene(scene);
         roleStage.setTitle("Select Founder Roles");
         roleStage.show();
+        for (int i = 0; i!=players.size(); i++)
+        {
+            final int __i = i;
+            Platform.runLater(() -> {
+                showInitialPlacementDialog(players.get(__i), false);
+            });
+        }
+        for (int i = players.size() - 1; i!=-1; i--)
+        {
+            final int __i = i;
+            Platform.runLater(() -> {
+                showInitialPlacementDialog(players.get(__i), false);
+            });
+        }
     }
     
     private void showGameUI() {
@@ -2172,6 +2186,7 @@ public class Main extends Application
         updateResourcesDisplay();
         
         eventLogArea = new TextArea();
+        eventLogArea.setWrapText(true);
         eventLogArea.setEditable(false);
         eventLogArea.setPrefHeight(200);
         eventLogArea.setStyle("-fx-control-inner-background: #0f3460; -fx-text-fill: #eeeeee;");
@@ -2393,16 +2408,18 @@ public class Main extends Application
             sb.append("• ").append(log.get(i)).append("\n");
         }
         eventLogArea.setText(sb.toString());
+        eventLogArea.setScrollTop(Double.MAX_VALUE);
+        eventLogArea.positionCaret(eventLogArea.getLength());
     }
     
     private void rollDice() {
         try {
             int roll = game.rollDice();
             updateMapGrid();
-            refreshVerticesOverlay();
             updateMarketDisplay();
             updateResourcesDisplay();
             updateEventLog();
+            refreshVerticesOverlay();
             
             // Check if crisis requires tax payment
             if (roll == GameConstants.CRISIS_DICE_SUM) {
