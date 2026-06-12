@@ -3,8 +3,10 @@ import javafx.application.Platform;
 import javafx.geometry.Pos;
 import javafx.geometry.Bounds;
 import javafx.geometry.Insets;
+import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -636,6 +638,7 @@ class Market implements Serializable {
 class GameMap implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    private transient Map<String, Vertex> vertexPositionCache;
     private final int rows;
     private final int cols;
     private final Sector[][] sectors;
@@ -665,6 +668,26 @@ class GameMap implements Serializable {
             if (s.getType().isProductive()) out.add(s.getType().produces());
         }
         return out;
+    }
+
+    public Vertex getVertexAtGridPosition(int row, int col) {
+        // ساختن کلید منحصر به فرد برای هر موقعیت گوشه
+        String key = row + "," + col;
+        
+        // ایجاد کش اگر قبلاً ساخته نشده
+        if (vertexPositionCache == null) {
+            vertexPositionCache = new HashMap<>();
+            for (Vertex v : vertices.values()) {
+                List<Sector> adj = v.getAdjacentSectors();
+                if (adj.isEmpty()) continue;
+                int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
+                int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
+                String cacheKey = minRow + "," + minCol;
+                vertexPositionCache.put(cacheKey, v);
+            }
+        }
+        
+        return vertexPositionCache.get(key);
     }
 
     public List<Sector> sectorsWithActivation(int diceSum) {
@@ -1409,89 +1432,117 @@ public class Main extends Application
     }
 
     private void refreshVerticesOverlay() {
-        if (mapContainer == null || verticesPane == null || game == null) return;
+        if (verticesPane == null || game == null) return;
         verticesPane.getChildren().clear();
         vertexCircles.clear();
-        if (mapGrid.getWidth() <= 0 || mapGrid.getHeight() <= 0) return;
-
-        // تبدیل مختصات گوشه اول گرید به Scene
-        Bounds gridBounds = mapGrid.localToScene(mapGrid.getBoundsInLocal());
-        if (gridBounds.getWidth() <= 0) return;
+        
+        if (mapGrid.getWidth() <= 0) {
+            Platform.runLater(() -> refreshVerticesOverlay());
+            return;
+        }
 
         int rows = game.getGameMap().getRows();
         int cols = game.getGameMap().getCols();
 
-        double cellWidth = (mapGrid.getWidth() - mapGrid.getPadding().getLeft() - mapGrid.getPadding().getRight()
-                - (cols - 1) * mapGrid.getHgap()) / cols;
-        double cellHeight = (mapGrid.getHeight() - mapGrid.getPadding().getTop() - mapGrid.getPadding().getBottom()
-                - (rows - 1) * mapGrid.getVgap()) / rows;
-
-        // شروع مختصات گرید در Scene (با در نظر گرفتن padding)
-        double startX = gridBounds.getMinX() + mapGrid.getPadding().getLeft();
-        double startY = gridBounds.getMinY() + mapGrid.getPadding().getTop();
-
+        // جمع‌آوری موقعیت تمام سلول‌ها
+        Map<String, Bounds> cellBounds = new HashMap<>();
+        for (Node node : mapGrid.getChildren()) {
+            Integer row = GridPane.getRowIndex(node);
+            Integer col = GridPane.getColumnIndex(node);
+            if (row != null && col != null) {
+                Bounds bounds = node.localToParent(node.getBoundsInLocal());
+                cellBounds.put(row + "," + col, bounds);
+            }
+        }
+        
+        if (cellBounds.isEmpty()) return;
+        
+        // مختصات رئوس (نقاط تقاطع)
         for (int r = 0; r <= rows; r++) {
             for (int c = 0; c <= cols; c++) {
-                Vertex vertex = findVertexAtGridPosition(r, c);
+                Vertex vertex = game.getGameMap().getVertexAtGridPosition(r, c);
                 if (vertex == null) continue;
-
-                double x = startX + c * (cellWidth + mapGrid.getHgap());
-                double y = startY + r * (cellHeight + mapGrid.getVgap());
-
-                Circle circle = new Circle(14);
+                
+                // پیدا کردن مختصات x از سلول‌های مجاور
+                double x = 0, y = 0;
+                int count = 0;
+                
+                // گوشه بالا-چپ
+                String key1 = r + "," + c;
+                // گوشه بالا-راست
+                String key2 = r + "," + (c - 1);
+                // گوشه پایین-چپ
+                String key3 = (r - 1) + "," + c;
+                // گوشه پایین-راست
+                String key4 = (r - 1) + "," + (c - 1);
+                
+                if (cellBounds.containsKey(key1)) {
+                    Bounds b = cellBounds.get(key1);
+                    x += b.getMinX();
+                    y += b.getMinY();
+                    count++;
+                }
+                if (cellBounds.containsKey(key2)) {
+                    Bounds b = cellBounds.get(key2);
+                    x += b.getMaxX();
+                    y += b.getMinY();
+                    count++;
+                }
+                if (cellBounds.containsKey(key3)) {
+                    Bounds b = cellBounds.get(key3);
+                    x += b.getMinX();
+                    y += b.getMaxY();
+                    count++;
+                }
+                if (cellBounds.containsKey(key4)) {
+                    Bounds b = cellBounds.get(key4);
+                    x += b.getMaxX();
+                    y += b.getMaxY();
+                    count++;
+                }
+                
+                if (count > 0) {
+                    x /= count;
+                    y /= count;
+                } else {
+                    continue;
+                }
+                
+                Circle circle = new Circle(10);
                 circle.setFill(vertex.isOccupied() ? Color.GOLD : Color.WHITE);
                 circle.setStroke(vertex.isOccupied() ? Color.ORANGE : Color.BLACK);
                 circle.setStrokeWidth(1.5);
                 circle.setCenterX(x);
                 circle.setCenterY(y);
-
+                
                 Text text = new Text(String.valueOf(vertex.getId()));
                 text.setFill(vertex.isOccupied() ? Color.BLACK : Color.DARKBLUE);
-                text.setFont(Font.font("Arial", FontWeight.BOLD, 11));
-
+                text.setFont(Font.font("Arial", FontWeight.BOLD, 9));
+                text.setX(x - 3);
+                text.setY(y + 3);
+                
                 Group group = new Group(circle, text);
-                group.setLayoutX(x - circle.getRadius());
-                group.setLayoutY(y - circle.getRadius());
-                text.setX(circle.getRadius() - 4);
-                text.setY(circle.getRadius() + 4);
-
                 group.setOnMouseClicked(event -> handleVertexClick(vertex));
-
-                group.setOnMouseEntered(e -> {
-                    if (!vertex.isOccupied()) {
-                        circle.setFill(Color.LIGHTYELLOW);
-                        circle.setStroke(Color.GOLD);
-                    }
-                });
-                group.setOnMouseExited(e -> {
-                    circle.setFill(vertex.isOccupied() ? Color.GOLD : Color.WHITE);
-                    circle.setStroke(vertex.isOccupied() ? Color.ORANGE : Color.BLACK);
-                });
-
+                
                 verticesPane.getChildren().add(group);
                 vertexCircles.put(vertex.getId(), circle);
             }
         }
     }
 
-    // پیدا کردن رأس بر اساس سطر و ستون گوشه (مختصات شبکه رئوس)
-    private Vertex findVertexAtGridPosition(int row, int col) {
-        for (Vertex v : game.getGameMap().getVertices().values()) {
-            // شناسایی رأس با بررسی سکتورهای مجاور
-            List<Sector> adj = v.getAdjacentSectors();
-            if (adj.isEmpty()) continue;
-            int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
-            int maxRow = adj.stream().mapToInt(Sector::getRow).max().getAsInt();
-            int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
-            int maxCol = adj.stream().mapToInt(Sector::getCol).max().getAsInt();
-            // رأس گوشه (minRow,minCol) تا (maxRow,maxCol) - منطق استاندارد
-            if (minRow == row && minCol == col && maxRow == row+1 && maxCol == col+1)
-                return v;
-            // برای لبه‌های نقشه ممکن است رأس‌هایی در ردیف/ستون آخر وجود داشته باشند
-            if (row == game.getGameMap().getRows() && col == game.getGameMap().getCols()
-                    && minRow == row-1 && minCol == col-1) return v;
+    private Node getCellAt(int row, int col) {
+        for (Node node : mapGrid.getChildren()) {
+            Integer rowIndex = GridPane.getRowIndex(node);
+            Integer colIndex = GridPane.getColumnIndex(node);
+            if (rowIndex != null && colIndex != null && rowIndex == row && colIndex == col) {
+                return node;
+            }
         }
         return null;
+    }
+
+    private Vertex findVertexAtGridPosition(int row, int col) {
+        return game.getGameMap().getVertexAtGridPosition(row, col);
     }
 
     private void handleVertexClick(Vertex vertex) {
@@ -1503,7 +1554,6 @@ public class Main extends Application
                 game.buildMVP(currentPlayer.getId(), vertex.getId());
                 refreshVerticesOverlay();   // به‌روزرسانی رنگ دایره‌ها
                 updateMapGrid();            // به‌روزرسانی سکتورها (برای نمایش شرکت روی نقشه)
-                refreshVerticesOverlay();
                 updateResourcesDisplay();
                 updateEventLog();
                 showInfo("MVP built at vertex " + vertex.getId());
@@ -2070,14 +2120,18 @@ public class Main extends Application
         mapContainer = new StackPane();
         mapContainer.getChildren().addAll(mapGrid, verticesPane);
         
+        StackPane.setAlignment(mapGrid, Pos.TOP_LEFT);
+        StackPane.setAlignment(verticesPane, Pos.TOP_LEFT);
         mapContainer.widthProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
         mapContainer.heightProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
         mapGrid.widthProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
         mapGrid.heightProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
-
+        mapGrid.getChildren().addListener((javafx.collections.ListChangeListener<Node>) change -> {
+            Platform.runLater(() -> refreshVerticesOverlay());
+        });
         Platform.runLater(() -> refreshVerticesOverlay());
 
-        ScrollPane mapScroll = new ScrollPane(mapGrid);
+        ScrollPane mapScroll = new ScrollPane(mapContainer);
         mapScroll.setFitToWidth(true);
         mapScroll.setFitToHeight(true);
         mapScroll.setStyle("-fx-background: #1a1a2e;");
@@ -2160,7 +2214,6 @@ public class Main extends Application
         primaryStage.setScene(scene);
         primaryStage.setTitle("Silicon Valley: The Tech Cartel");
         primaryStage.show();
-        
         // Start auto-refresh for event log
         startEventLogUpdater();
     }

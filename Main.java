@@ -6,6 +6,7 @@ import javafx.geometry.Insets;
 import javafx.geometry.Point2D;
 import javafx.scene.Group;
 import javafx.scene.Scene;
+import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
 import javafx.scene.paint.Color;
@@ -637,6 +638,7 @@ class Market implements Serializable {
 class GameMap implements Serializable {
     private static final long serialVersionUID = 1L;
 
+    private transient Map<String, Vertex> vertexPositionCache;
     private final int rows;
     private final int cols;
     private final Sector[][] sectors;
@@ -666,6 +668,39 @@ class GameMap implements Serializable {
             if (s.getType().isProductive()) out.add(s.getType().produces());
         }
         return out;
+    }
+
+    public Vertex getVertexAtGridPosition(int row, int col) {
+        // Compute the top-left sector coordinates that uniquely identify this vertex
+        int r = row;
+        int c = col;
+        if (row == 0 && col == 0) {
+            // corner (0,0) -> sector (0,0)
+        } else if (row == 0) {
+            // top edge (not corner) -> sector (0, col-1)
+            c = col - 1;
+        } else if (col == 0) {
+            // left edge (not corner) -> sector (row-1, 0)
+            r = row - 1;
+        } else {
+            // interior or bottom/right edges -> sector (row-1, col-1)
+            r = row - 1;
+            c = col - 1;
+        }
+        String key = r + "," + c;
+
+        // Build cache if not already built
+        if (vertexPositionCache == null) {
+            vertexPositionCache = new HashMap<>();
+            for (Vertex v : vertices.values()) {
+                List<Sector> adj = v.getAdjacentSectors();
+                if (adj.isEmpty()) continue;
+                int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
+                int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
+                vertexPositionCache.put(minRow + "," + minCol, v);
+            }
+        }
+        return vertexPositionCache.get(key);
     }
 
     public List<Sector> sectorsWithActivation(int diceSum) {
@@ -911,6 +946,42 @@ class GameController implements Serializable
                 throw new InvalidPlacementException("Must be at least 2 edges from another company");
             }
         }
+    }
+
+    public synchronized void tradeWithPlayer(int playerId, int otherPlayerId, Map<Resource, Integer> give, Map<Resource, Integer> receive) throws GameException {
+        if (gameOver) throw new IllegalActionException("Game is already over");
+        Player proposer = players.get(playerId);
+        Player opponent = players.get(otherPlayerId);
+
+        // Check proposer has enough resources to give
+        for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
+            if (entry.getValue() > 0 && proposer.getResource(entry.getKey()) < entry.getValue()) {
+                throw new InsufficientResourcesException("Not enough " + entry.getKey().display());
+            }
+        }
+        // Check opponent has enough resources to give
+        for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+            if (entry.getValue() > 0 && opponent.getResource(entry.getKey()) < entry.getValue()) {
+                throw new InsufficientResourcesException(
+                    opponent.getName() + " doesn't have enough " + entry.getKey().display());
+            }
+        }
+
+        // Execute trade atomically
+        for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
+            if (entry.getValue() > 0) {
+                proposer.removeResource(entry.getKey(), entry.getValue());
+                opponent.addResource(entry.getKey(), entry.getValue());
+            }
+        }
+        for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+            if (entry.getValue() > 0) {
+                opponent.removeResource(entry.getKey(), entry.getValue());
+                proposer.addResource(entry.getKey(), entry.getValue());
+            }
+        }
+
+        log(proposer.getName() + " traded with " + opponent.getName());
     }
 
     private void validateEdgeForSetup(Player player, int edgeId, int anchorVertexId) throws GameException {
@@ -1410,100 +1481,117 @@ public class Main extends Application
     }
 
     private void refreshVerticesOverlay() {
-        if (mapContainer == null || verticesPane == null || game == null) return;
+        if (verticesPane == null || game == null) return;
         verticesPane.getChildren().clear();
         vertexCircles.clear();
-        if (mapGrid.getWidth() <= 0 || mapGrid.getHeight() <= 0) return;
-
-        // تبدیل مختصات گوشه اول گرید به مختصات محلی mapContainer
-        Bounds gridBounds = mapGrid.localToScene(mapGrid.getBoundsInLocal());
-        if (gridBounds.getWidth() <= 0) return;
+        
+        if (mapGrid.getWidth() <= 0) {
+            Platform.runLater(() -> refreshVerticesOverlay());
+            return;
+        }
 
         int rows = game.getGameMap().getRows();
         int cols = game.getGameMap().getCols();
 
-        double cellWidth = (mapGrid.getWidth() - mapGrid.getPadding().getLeft() - mapGrid.getPadding().getRight()
-                - (cols - 1) * mapGrid.getHgap()) / cols;
-        double cellHeight = (mapGrid.getHeight() - mapGrid.getPadding().getTop() - mapGrid.getPadding().getBottom()
-                - (rows - 1) * mapGrid.getVgap()) / rows;
-
-        // شروع مختصات گرید در مختصات صحنه
-        double startSceneX = gridBounds.getMinX() + mapGrid.getPadding().getLeft();
-        double startSceneY = gridBounds.getMinY() + mapGrid.getPadding().getTop();
-
+        // جمع‌آوری موقعیت تمام سلول‌ها
+        Map<String, Bounds> cellBounds = new HashMap<>();
+        for (Node node : mapGrid.getChildren()) {
+            Integer row = GridPane.getRowIndex(node);
+            Integer col = GridPane.getColumnIndex(node);
+            if (row != null && col != null) {
+                Bounds bounds = node.localToParent(node.getBoundsInLocal());
+                cellBounds.put(row + "," + col, bounds);
+            }
+        }
+        
+        if (cellBounds.isEmpty()) return;
+        
+        // مختصات رئوس (نقاط تقاطع)
         for (int r = 0; r <= rows; r++) {
             for (int c = 0; c <= cols; c++) {
-                Vertex vertex = findVertexAtGridPosition(r, c);
+                Vertex vertex = game.getGameMap().getVertexAtGridPosition(r, c);
                 if (vertex == null) continue;
-
-                // مختصات صحنه این رأس
-                double sceneX = startSceneX + c * (cellWidth + mapGrid.getHgap());
-                double sceneY = startSceneY + r * (cellHeight + mapGrid.getVgap());
-
-                // تبدیل به مختصات محلی mapContainer
-                Point2D scenePoint = new Point2D(sceneX, sceneY);
-                Point2D localPoint = mapContainer.sceneToLocal(scenePoint);
-                double localX = localPoint.getX();
-                double localY = localPoint.getY();
-
-                Circle circle = new Circle(14);
+                
+                // پیدا کردن مختصات x از سلول‌های مجاور
+                double x = 0, y = 0;
+                int count = 0;
+                
+                // گوشه بالا-چپ
+                String key1 = r + "," + c;
+                // گوشه بالا-راست
+                String key2 = r + "," + (c - 1);
+                // گوشه پایین-چپ
+                String key3 = (r - 1) + "," + c;
+                // گوشه پایین-راست
+                String key4 = (r - 1) + "," + (c - 1);
+                
+                if (cellBounds.containsKey(key1)) {
+                    Bounds b = cellBounds.get(key1);
+                    x += b.getMinX();
+                    y += b.getMinY();
+                    count++;
+                }
+                if (cellBounds.containsKey(key2)) {
+                    Bounds b = cellBounds.get(key2);
+                    x += b.getMaxX();
+                    y += b.getMinY();
+                    count++;
+                }
+                if (cellBounds.containsKey(key3)) {
+                    Bounds b = cellBounds.get(key3);
+                    x += b.getMinX();
+                    y += b.getMaxY();
+                    count++;
+                }
+                if (cellBounds.containsKey(key4)) {
+                    Bounds b = cellBounds.get(key4);
+                    x += b.getMaxX();
+                    y += b.getMaxY();
+                    count++;
+                }
+                
+                if (count > 0) {
+                    x /= count;
+                    y /= count;
+                } else {
+                    continue;
+                }
+                
+                Circle circle = new Circle(10);
                 circle.setFill(vertex.isOccupied() ? Color.GOLD : Color.WHITE);
                 circle.setStroke(vertex.isOccupied() ? Color.ORANGE : Color.BLACK);
                 circle.setStrokeWidth(1.5);
-                circle.setCenterX(localX);
-                circle.setCenterY(localY);
-
+                circle.setCenterX(x);
+                circle.setCenterY(y);
+                
                 Text text = new Text(String.valueOf(vertex.getId()));
                 text.setFill(vertex.isOccupied() ? Color.BLACK : Color.DARKBLUE);
-                text.setFont(Font.font("Arial", FontWeight.BOLD, 11));
-
+                text.setFont(Font.font("Arial", FontWeight.BOLD, 9));
+                text.setX(x - 3);
+                text.setY(y + 3);
+                
                 Group group = new Group(circle, text);
-                group.setLayoutX(localX - circle.getRadius());
-                group.setLayoutY(localY - circle.getRadius());
-                text.setX(circle.getRadius() - 4);
-                text.setY(circle.getRadius() + 4);
-
                 group.setOnMouseClicked(event -> handleVertexClick(vertex));
-
-                group.setOnMouseEntered(e -> {
-                    if (!vertex.isOccupied()) {
-                        circle.setFill(Color.LIGHTYELLOW);
-                        circle.setStroke(Color.GOLD);
-                    }
-                });
-                group.setOnMouseExited(e -> {
-                    circle.setFill(vertex.isOccupied() ? Color.GOLD : Color.WHITE);
-                    circle.setStroke(vertex.isOccupied() ? Color.ORANGE : Color.BLACK);
-                });
-
+                
                 verticesPane.getChildren().add(group);
                 vertexCircles.put(vertex.getId(), circle);
             }
         }
     }
 
-    // پیدا کردن رأس بر اساس سطر و ستون گوشه (مختصات شبکه رئوس)
-    private Vertex findVertexAtGridPosition(int row, int col) {
-        // مختصات سکتورهایی که باید در مجاورت این گوشه باشند
-        Set<String> expectedCoords = new HashSet<>();
-        int rows = game.getGameMap().getRows();
-        int cols = game.getGameMap().getCols();
-        
-        if (row > 0 && col > 0) expectedCoords.add((row-1) + "," + (col-1));
-        if (row > 0 && col < cols) expectedCoords.add((row-1) + "," + col);
-        if (row < rows && col > 0) expectedCoords.add(row + "," + (col-1));
-        if (row < rows && col < cols) expectedCoords.add(row + "," + col);
-        
-        for (Vertex v : game.getGameMap().getVertices().values()) {
-            Set<String> actualCoords = new HashSet<>();
-            for (Sector s : v.getAdjacentSectors()) {
-                actualCoords.add(s.getRow() + "," + s.getCol());
-            }
-            if (actualCoords.equals(expectedCoords)) {
-                return v;
+    private Node getCellAt(int row, int col) {
+        for (Node node : mapGrid.getChildren()) {
+            Integer rowIndex = GridPane.getRowIndex(node);
+            Integer colIndex = GridPane.getColumnIndex(node);
+            if (rowIndex != null && colIndex != null && rowIndex == row && colIndex == col) {
+                return node;
             }
         }
         return null;
+    }
+
+    private Vertex findVertexAtGridPosition(int row, int col) {
+        return game.getGameMap().getVertexAtGridPosition(row, col);
     }
 
     private void handleVertexClick(Vertex vertex) {
@@ -2081,11 +2169,15 @@ public class Main extends Application
         mapContainer = new StackPane();
         mapContainer.getChildren().addAll(mapGrid, verticesPane);
         
+        StackPane.setAlignment(mapGrid, Pos.TOP_LEFT);
+        StackPane.setAlignment(verticesPane, Pos.TOP_LEFT);
         mapContainer.widthProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
         mapContainer.heightProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
         mapGrid.widthProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
         mapGrid.heightProperty().addListener((obs, old, val) -> refreshVerticesOverlay());
-
+        mapGrid.getChildren().addListener((javafx.collections.ListChangeListener<Node>) change -> {
+            Platform.runLater(() -> refreshVerticesOverlay());
+        });
         Platform.runLater(() -> refreshVerticesOverlay());
 
         ScrollPane mapScroll = new ScrollPane(mapContainer);
@@ -2171,7 +2263,6 @@ public class Main extends Application
         primaryStage.setScene(scene);
         primaryStage.setTitle("Silicon Valley: The Tech Cartel");
         primaryStage.show();
-        
         // Start auto-refresh for event log
         startEventLogUpdater();
     }
@@ -2912,24 +3003,15 @@ public class Main extends Application
         Button acceptBtn = new Button("Accept");
         acceptBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
         acceptBtn.setOnAction(ev -> {
-            // Execute trade
-            for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
-                if (entry.getValue() > 0) {
-                    proposer.removeResource(entry.getKey(), entry.getValue());
-                    opponent.addResource(entry.getKey(), entry.getValue());
-                }
+            try {
+                game.tradeWithPlayer(proposer.getId(), opponent.getId(), give, receive);
+                proposalStage.close();
+                updateResourcesDisplay();
+                updateEventLog();
+                showInfo("Trade completed!");
+            } catch (GameException ex) {
+                showError("Trade failed: " + ex.getMessage());
             }
-            for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
-                if (entry.getValue() > 0) {
-                    opponent.removeResource(entry.getKey(), entry.getValue());
-                    proposer.addResource(entry.getKey(), entry.getValue());
-                }
-            }
-            game.getEventLog().add(proposer.getName() + " traded with " + opponent.getName());
-            updateResourcesDisplay();
-            updateEventLog();
-            showInfo("Trade completed!");
-            proposalStage.close();
         });
 
         Button rejectBtn = new Button("Reject");
