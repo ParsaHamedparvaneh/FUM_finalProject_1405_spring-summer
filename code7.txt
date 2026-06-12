@@ -671,23 +671,8 @@ class GameMap implements Serializable {
     }
 
     public Vertex getVertexAtGridPosition(int row, int col) {
-        // ساختن کلید منحصر به فرد برای هر موقعیت گوشه
-        String key = row + "," + col;
-        
-        // ایجاد کش اگر قبلاً ساخته نشده
-        if (vertexPositionCache == null) {
-            vertexPositionCache = new HashMap<>();
-            for (Vertex v : vertices.values()) {
-                List<Sector> adj = v.getAdjacentSectors();
-                if (adj.isEmpty()) continue;
-                int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
-                int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
-                String cacheKey = minRow + "," + minCol;
-                vertexPositionCache.put(cacheKey, v);
-            }
-        }
-        
-        return vertexPositionCache.get(key);
+        int id = row * (cols + 1) + col;
+        return vertices.get(id);
     }
 
     public List<Sector> sectorsWithActivation(int diceSum) {
@@ -933,6 +918,42 @@ class GameController implements Serializable
                 throw new InvalidPlacementException("Must be at least 2 edges from another company");
             }
         }
+    }
+
+    public synchronized void tradeWithPlayer(int playerId, int otherPlayerId, Map<Resource, Integer> give, Map<Resource, Integer> receive) throws GameException {
+        if (gameOver) throw new IllegalActionException("Game is already over");
+        Player proposer = players.get(playerId);
+        Player opponent = players.get(otherPlayerId);
+
+        // Check proposer has enough resources to give
+        for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
+            if (entry.getValue() > 0 && proposer.getResource(entry.getKey()) < entry.getValue()) {
+                throw new InsufficientResourcesException("Not enough " + entry.getKey().display());
+            }
+        }
+        // Check opponent has enough resources to give
+        for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+            if (entry.getValue() > 0 && opponent.getResource(entry.getKey()) < entry.getValue()) {
+                throw new InsufficientResourcesException(
+                    opponent.getName() + " doesn't have enough " + entry.getKey().display());
+            }
+        }
+
+        // Execute trade atomically
+        for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
+            if (entry.getValue() > 0) {
+                proposer.removeResource(entry.getKey(), entry.getValue());
+                opponent.addResource(entry.getKey(), entry.getValue());
+            }
+        }
+        for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
+            if (entry.getValue() > 0) {
+                opponent.removeResource(entry.getKey(), entry.getValue());
+                proposer.addResource(entry.getKey(), entry.getValue());
+            }
+        }
+
+        log(proposer.getName() + " traded with " + opponent.getName());
     }
 
     private void validateEdgeForSetup(Player player, int edgeId, int anchorVertexId) throws GameException {
@@ -2954,24 +2975,15 @@ public class Main extends Application
         Button acceptBtn = new Button("Accept");
         acceptBtn.setStyle("-fx-background-color: #4CAF50; -fx-text-fill: white;");
         acceptBtn.setOnAction(ev -> {
-            // Execute trade
-            for (Map.Entry<Resource, Integer> entry : give.entrySet()) {
-                if (entry.getValue() > 0) {
-                    proposer.removeResource(entry.getKey(), entry.getValue());
-                    opponent.addResource(entry.getKey(), entry.getValue());
-                }
+            try {
+                game.tradeWithPlayer(proposer.getId(), opponent.getId(), give, receive);
+                proposalStage.close();
+                updateResourcesDisplay();
+                updateEventLog();
+                showInfo("Trade completed!");
+            } catch (GameException ex) {
+                showError("Trade failed: " + ex.getMessage());
             }
-            for (Map.Entry<Resource, Integer> entry : receive.entrySet()) {
-                if (entry.getValue() > 0) {
-                    opponent.removeResource(entry.getKey(), entry.getValue());
-                    proposer.addResource(entry.getKey(), entry.getValue());
-                }
-            }
-            game.getEventLog().add(proposer.getName() + " traded with " + opponent.getName());
-            updateResourcesDisplay();
-            updateEventLog();
-            showInfo("Trade completed!");
-            proposalStage.close();
         });
 
         Button rejectBtn = new Button("Reject");

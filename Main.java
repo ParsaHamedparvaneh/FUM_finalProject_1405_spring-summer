@@ -671,36 +671,8 @@ class GameMap implements Serializable {
     }
 
     public Vertex getVertexAtGridPosition(int row, int col) {
-        // Compute the top-left sector coordinates that uniquely identify this vertex
-        int r = row;
-        int c = col;
-        if (row == 0 && col == 0) {
-            // corner (0,0) -> sector (0,0)
-        } else if (row == 0) {
-            // top edge (not corner) -> sector (0, col-1)
-            c = col - 1;
-        } else if (col == 0) {
-            // left edge (not corner) -> sector (row-1, 0)
-            r = row - 1;
-        } else {
-            // interior or bottom/right edges -> sector (row-1, col-1)
-            r = row - 1;
-            c = col - 1;
-        }
-        String key = r + "," + c;
-
-        // Build cache if not already built
-        if (vertexPositionCache == null) {
-            vertexPositionCache = new HashMap<>();
-            for (Vertex v : vertices.values()) {
-                List<Sector> adj = v.getAdjacentSectors();
-                if (adj.isEmpty()) continue;
-                int minRow = adj.stream().mapToInt(Sector::getRow).min().getAsInt();
-                int minCol = adj.stream().mapToInt(Sector::getCol).min().getAsInt();
-                vertexPositionCache.put(minRow + "," + minCol, v);
-            }
-        }
-        return vertexPositionCache.get(key);
+        int id = row * (cols + 1) + col;
+        return vertices.get(id);
     }
 
     public List<Sector> sectorsWithActivation(int diceSum) {
