@@ -3,7 +3,6 @@ import javafx.util.*;
 import javafx.animation.*;
 import javafx.scene.layout.*;
 import javafx.application.Application;
-import javafx.scene.Scene;
 import javafx.scene.control.Button;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.GaussianBlur;
@@ -23,14 +22,19 @@ class HELPERS
 {
     public static int[] getVertexIdxFromSectorIdx(int sectorIdx)
     {
-        int row = sectorIdx / 2;
-        int col = sectorIdx % 2;
-
+        int sectorsPerRow = CONSTS.MAX_WIDTH;
+        int verticesPerRow = CONSTS.MAX_WIDTH + 1;
+        
+        int sectorRow = sectorIdx/sectorsPerRow;
+        int sectorCol = sectorIdx % sectorsPerRow;
+        
+        int topLeftVertex = sectorRow * verticesPerRow + sectorCol;
+        
         int fin[] = new int[4];
-        fin[0] = row*3 + col;
-        fin[1] = row*3 + col + 1;
-        fin[2] = (row+1) * 3 + col;
-        fin[3] = (row+1) * 3 + col + 1;
+        fin[0] = topLeftVertex;
+        fin[1] = topLeftVertex + 1;
+        fin[2] = topLeftVertex + verticesPerRow;
+        fin[3] = topLeftVertex + verticesPerRow + 1;
         return fin;
     }
 
@@ -89,24 +93,27 @@ class HELPERS
                 stackPane.setLayoutY(y - CONSTS.VERTEX_RADIUS);
                 stackPane.setPrefSize(CONSTS.VERTEX_RADIUS * 2, CONSTS.VERTEX_RADIUS * 2);
 
-                stackPane.setOnMouseEntered(event -> {
-                    Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.4, 800);
-                    timeline.play();
-                });
-
-                stackPane.setOnMouseExited(event -> {
-                    Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.0, 800);
-                    timeline.play();
-                });
-                stackPane.setOnMouseClicked(event -> {
-                    Player currentPlayer = Main.getCurrentPlayer();
-                    
-                    if (vertex.type != CONSTS.VERTEX_TYPE_UNICORN)
-                        showPurchaseMenu(root, vertex, currentPlayer);
-                    else
-                        showVertexInfo(root, vertex, currentPlayer);
-                });
-                stackPane.setCursor(javafx.scene.Cursor.HAND);
+                if (vertex.owner == null || vertex.owner == Main.getCurrentPlayer())
+                {
+                    stackPane.setOnMouseEntered(event -> {
+                        Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.4, 800);
+                        timeline.play();
+                    });
+    
+                    stackPane.setOnMouseExited(event -> {
+                        Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.0, 800);
+                        timeline.play();
+                    });
+                    stackPane.setOnMouseClicked(event -> {
+                        Player currentPlayer = Main.getCurrentPlayer();
+                        
+                        if (vertex.type != CONSTS.VERTEX_TYPE_UNICORN)
+                            showPurchaseMenu(root, vertex, currentPlayer);
+                        else
+                            showVertexInfo(root, vertex, currentPlayer);
+                    });
+                    stackPane.setCursor(javafx.scene.Cursor.HAND);
+                }
                 
                 Circle circle = new Circle(CONSTS.VERTEX_RADIUS, CONSTS.VERTEX_RADIUS, CONSTS.VERTEX_RADIUS);
                 circle.setFill(getVertexColor(vertex));
@@ -431,15 +438,10 @@ class HELPERS
         vertex.type = type;
         vertex.owner = player;
         
-        // TODO: Add specific effects based on type
         if (type.equals("MVP"))
-        {
-            // TODO: Add MVP specific bonuses
-        }
+            player.score += 1;
         else if (type.equals("UNICORN"))
-        {
-            // TODO: Add UNICORN specific bonuses
-        }
+            player.score += 2;
         else if (type.equals("PARTNERSHIP"))
         {
             // TODO: Add PARTNERSHIP specific logic
@@ -503,8 +505,8 @@ class CONSTS
 
     public static int MAX_PLAYER_COUNT = 4;
 
-    public static final int MAX_WIDTH  = 6;
-    public static final int MAX_HEIGHT = 6;
+    public static final int MAX_WIDTH  = 5;
+    public static final int MAX_HEIGHT = 5;
 
     public static final int WINDOW_WIDTH  = 1000; // pixels
     public static final int WINDOW_HEIGHT = 800;  // pixels
@@ -560,6 +562,7 @@ class CONSTS
     {
         try { CUSTOM_FONT = Font.loadFont(new FileInputStream("./assets/font.ttf"), 12); } catch (Exception e) {}
 
+        // HERE
         SECTOR_REWARDS_HM.put(SECTOR_TYPE_AI, REWARD_TYPE_AI);
         SECTOR_REWARDS_HM.put(SECTOR_TYPE_FINTECH, REWARD_TYPE_FINTECH);
         SECTOR_REWARDS_HM.put(SECTOR_TYPE_CLOUD, REWARD_TYPE_CLOUD);
@@ -596,6 +599,8 @@ class Player
 {
     public int idx;
 
+    public int score;
+    
     public int talentCount;
     public int capitalCount;
     public int cloudCount;
@@ -607,6 +612,8 @@ class Player
     public Player(int i)
     {
         idx = i;
+
+        score = 0;
 
         talentCount = capitalCount = cloudCount = patentCount = dataCount = 10;
         
@@ -653,16 +660,75 @@ public class Main extends Application
     static Sector SECTORS[]      = new Sector[CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT];
     static Vertex VERTICES[][]   = new Vertex[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH+1];
 
+    static int playerCount;
+    static Button diceBtn;
+    static Button shopBtn;
+    static Button tradeBtn;
+    static Button nextBtn;
+    static HBox buttonBar;
+
+    // SHOP RELATED
+    static int talentPrice  = 4;
+    static int capitalPrice = 4;
+    static int cloudPrice   = 4;
+    static int patentPrice  = 4;
+    static int dataPrice    = 4;
+
+    static boolean talentwasBought  = false;
+    static boolean capitalwasBought = false;
+    static boolean cloudwasBought   = false;
+    static boolean patentwasBought  = false;
+    static boolean datawasBought    = false;
+
+    static int talentNotBoughtForNRounds  = 0;
+    static int capitalNotBoughtForNRounds = 0;
+    static int cloudNotBoughtForNRounds   = 0;
+    static int patentNotBoughtForNRounds  = 0;
+    static int dataNotBoughtForNRounds    = 0;
+    // END SHOP RELATED
+
     @Override
     public void start(Stage primaryStage)
     {
         Pane root = new Pane();
         root.setStyle("-fx-background-color: #000000;");
-        // Draw sectors (squares)
+
         HELPERS.drawSectors(root, SECTORS);
-        
-        // Draw vertices (circles)
         HELPERS.drawVertices(root, VERTICES);
+
+
+        HBox buttonBar = new HBox(20);
+        buttonBar.setAlignment(javafx.geometry.Pos.CENTER);
+        buttonBar.setLayoutX(0);
+        buttonBar.setLayoutY(CONSTS.WINDOW_HEIGHT - 80);
+        buttonBar.setPrefWidth(CONSTS.WINDOW_WIDTH);
+        buttonBar.setStyle("-fx-background-color: #000000; -fx-padding: 10;");
+
+        diceBtn = new Button("⚄");
+        diceBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        diceBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.2, 1000).play());
+        diceBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.0, 1000).play());
+        diceBtn.setOnAction(e -> rollDice());
+        shopBtn = new Button("🏪");
+        shopBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        shopBtn.setDisable(true);
+        shopBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.2, 1000).play());
+        shopBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.0, 1000).play());
+        shopBtn.setOnAction(e -> openShop());
+        tradeBtn = new Button("🤝");
+        tradeBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        tradeBtn.setDisable(true);
+        tradeBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.2, 1000).play());
+        tradeBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.0, 1000).play());
+        tradeBtn.setOnAction(e -> openTrade());
+        nextBtn = new Button("✅");
+        nextBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        nextBtn.setDisable(true);
+        nextBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.2, 1000).play());
+        nextBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.0, 1000).play());
+        nextBtn.setOnAction(e -> nextTurn());
+        buttonBar.getChildren().addAll(diceBtn, shopBtn, tradeBtn, nextBtn);
+        root.getChildren().add(buttonBar);
         
         Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
         primaryStage.setTitle("MONOPOLY LOOKING AHH GAME");
@@ -675,6 +741,7 @@ public class Main extends Application
         // INIT PLAYERS
         // TODO
         PLAYERS[0] = new Player(0);
+        playerCount = 1;
         // END INIT PLAYERS
         
         // INIT EDGES
@@ -700,9 +767,106 @@ public class Main extends Application
         launch(args);
     }
 
-    // APIs
+    // APIs/others
     public static Player getCurrentPlayer()
     {
         return PLAYERS[currentPlayerIdx];
+    }
+    public static void updateButtonsAfterRoll()
+    {
+        diceBtn.setDisable(true);
+        shopBtn.setDisable(false);
+        tradeBtn.setDisable(false);
+        nextBtn.setDisable(false);
+    }
+
+    public static void updateButtonsAfterNext()
+    {
+        diceBtn.setDisable(false);
+        shopBtn.setDisable(true);
+        tradeBtn.setDisable(true);
+        nextBtn.setDisable(true);
+    }
+    public static void rollDice()
+    {
+        int dieNum = (int)(11 * Math.random() + 2);
+        if (dieNum != 7)
+        {
+            for (Sector s : SECTORS)
+            {
+                if (s.dieNum == dieNum)
+                {
+                    for (int vIdx : HELPERS.getVertexIdxFromSectorIdx(s.idx))
+                    {
+                        Vertex vert = null;
+                        boolean __shouldBreak = false;
+                        for (int i = 0; i!=VERTICES.length; i++)
+                        {
+                            for (int j = 0; j!=VERTICES[i].length; j++)
+                            {
+                                if (VERTICES[i][j].idx == vIdx)
+                                {
+                                    vert = VERTICES[i][j];
+                                    __shouldBreak = true;
+                                    break;
+                                }
+                            }
+                            if (__shouldBreak)
+                                break;
+                        }
+                        Player __owner = vert.owner;
+                        if (__owner == null)
+                            continue;
+                        switch (CONSTS.SECTOR_REWARDS_HM.get(s.type))
+                        {
+                            case CONSTS.REWARD_TYPE_AI:
+                                __owner.talentCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_CLOUD:
+                                __owner.cloudCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_DATA:
+                                __owner.dataCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_FINTECH:
+                                __owner.capitalCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_IP:
+                                __owner.patentCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_REGU:
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                }
+            }
+        }
+        else
+        {
+            // TODO when = 7 (regulatory)
+        }
+        updateButtonsAfterRoll();
+    }
+
+    public static void openShop()
+    {
+        // TODO: Implement shop logic
+        System.out.println("Shop opened!");
+    }
+
+    public static void openTrade()
+    {
+        // TODO: Implement trade logic
+        System.out.println("Trade opened!");
+    }
+
+    public static void nextTurn()
+    {
+        // TODO: Implement next player logic
+        currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
+        System.out.println("Next player: " + currentPlayerIdx);
+        updateButtonsAfterNext();
     }
 }
