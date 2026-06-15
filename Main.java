@@ -680,6 +680,7 @@ public class Main extends Application
     static boolean patentwasBought  = false;
     static boolean datawasBought    = false;
 
+
     static int talentNotBoughtForNRounds  = 0;
     static int cloudNotBoughtForNRounds   = 0;
     static int patentNotBoughtForNRounds  = 0;
@@ -1013,28 +1014,56 @@ public class Main extends Application
         if (!talentwasBought)
             talentNotBoughtForNRounds += 1;
         else
+        {
             talentPrice = Math.min(6, talentPrice + 1);
+            talentNotBoughtForNRounds = 0;
+        }
         if (!cloudwasBought)
             cloudNotBoughtForNRounds += 1;
         else
+        {
             cloudPrice = Math.min(6, cloudPrice + 1);
+            cloudNotBoughtForNRounds = 0;
+        }
         if (!patentwasBought)
             patentNotBoughtForNRounds += 1;
         else
+        {
             patentPrice = Math.min(6, patentPrice + 1);
+            patentNotBoughtForNRounds = 0;
+        }
         if (!datawasBought)
             dataNotBoughtForNRounds += 1;
         else
+        {
             dataPrice = Math.min(6, dataPrice + 1);
+            dataNotBoughtForNRounds = 0;
+        }
 
         if (talentNotBoughtForNRounds >= 3)
+        {
             talentPrice = Math.max(2, talentPrice - 1);
+            talentNotBoughtForNRounds = 0;
+        }
         if (cloudNotBoughtForNRounds >= 3)
+        {
             cloudPrice = Math.max(2, cloudPrice - 1);
+            cloudNotBoughtForNRounds = 0;
+        }
         if (patentNotBoughtForNRounds >= 3)
+        {
             patentPrice = Math.max(2, patentPrice - 1);
+            patentNotBoughtForNRounds = 0;
+        }
         if (dataNotBoughtForNRounds >= 3)
+        {
             dataPrice = Math.max(2, dataPrice - 1);
+            dataNotBoughtForNRounds = 0;
+        }
+        talentwasBought = false;
+        cloudwasBought = false;
+        patentwasBought = false;
+        datawasBought = false;
 
         currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
         System.out.println("Next player: " + currentPlayerIdx);
