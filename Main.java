@@ -93,27 +93,33 @@ class HELPERS
                 stackPane.setLayoutY(y - CONSTS.VERTEX_RADIUS);
                 stackPane.setPrefSize(CONSTS.VERTEX_RADIUS * 2, CONSTS.VERTEX_RADIUS * 2);
 
-                if (vertex.owner == null || vertex.owner == Main.getCurrentPlayer())
-                {
-                    stackPane.setOnMouseEntered(event -> {
+                stackPane.setOnMouseEntered(event -> {
+                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices)
+                    {
                         Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.4, 800);
                         timeline.play();
-                    });
-    
-                    stackPane.setOnMouseExited(event -> {
+                    }
+                });
+
+                stackPane.setOnMouseExited(event -> {
+                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices)
+                    {
                         Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.0, 800);
                         timeline.play();
-                    });
-                    stackPane.setOnMouseClicked(event -> {
+                    }
+                });
+                stackPane.setOnMouseClicked(event -> {
+                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices)
+                    {
                         Player currentPlayer = Main.getCurrentPlayer();
                         
                         if (vertex.type != CONSTS.VERTEX_TYPE_UNICORN)
                             showPurchaseMenu(root, vertex, currentPlayer);
                         else
                             showVertexInfo(root, vertex, currentPlayer);
-                    });
-                    stackPane.setCursor(javafx.scene.Cursor.HAND);
-                }
+                    }
+                });
+                stackPane.setCursor(javafx.scene.Cursor.HAND);
                 
                 Circle circle = new Circle(CONSTS.VERTEX_RADIUS, CONSTS.VERTEX_RADIUS, CONSTS.VERTEX_RADIUS);
                 circle.setFill(getVertexColor(vertex));
@@ -669,6 +675,8 @@ public class Main extends Application
     static Button nextBtn;
     static HBox buttonBar;
 
+    static boolean canInteractWithVertices = false;
+
     // SHOP RELATED
     static int talentPrice  = 4;
     static int cloudPrice   = 4;
@@ -780,6 +788,7 @@ public class Main extends Application
         shopBtn.setDisable(false);
         tradeBtn.setDisable(false);
         nextBtn.setDisable(false);
+        canInteractWithVertices = true;
     }
 
     public static void updateButtonsAfterNext()
@@ -788,6 +797,7 @@ public class Main extends Application
         shopBtn.setDisable(true);
         tradeBtn.setDisable(true);
         nextBtn.setDisable(true);
+        canInteractWithVertices = false;
     }
     private static int getResourceAmount(Player player, String resourceType)
     {
