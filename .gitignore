@@ -1,0 +1,4 @@
+*.class
+*.c
+.vscode/
+javafx-sdk-21.0.11/
