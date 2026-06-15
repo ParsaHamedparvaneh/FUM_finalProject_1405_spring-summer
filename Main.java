@@ -654,6 +654,8 @@ class Sector
 
 public class Main extends Application
 {
+    static Pane rootPane;
+
     static Player PLAYERS[]      = new Player[CONSTS.MAX_PLAYER_COUNT];
     static int currentPlayerIdx  = 0;
     static int EDGES_FROM_TO[][] = new int[CONSTS.MAX_HEIGHT][CONSTS.MAX_WIDTH];
@@ -669,19 +671,16 @@ public class Main extends Application
 
     // SHOP RELATED
     static int talentPrice  = 4;
-    static int capitalPrice = 4;
     static int cloudPrice   = 4;
     static int patentPrice  = 4;
     static int dataPrice    = 4;
 
     static boolean talentwasBought  = false;
-    static boolean capitalwasBought = false;
     static boolean cloudwasBought   = false;
     static boolean patentwasBought  = false;
     static boolean datawasBought    = false;
 
     static int talentNotBoughtForNRounds  = 0;
-    static int capitalNotBoughtForNRounds = 0;
     static int cloudNotBoughtForNRounds   = 0;
     static int patentNotBoughtForNRounds  = 0;
     static int dataNotBoughtForNRounds    = 0;
@@ -714,7 +713,7 @@ public class Main extends Application
         shopBtn.setDisable(true);
         shopBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.2, 1000).play());
         shopBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.0, 1000).play());
-        shopBtn.setOnAction(e -> openShop());
+        shopBtn.setOnAction(e -> openShop(getCurrentPlayer()));
         tradeBtn = new Button("🤝");
         tradeBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
         tradeBtn.setDisable(true);
@@ -730,6 +729,8 @@ public class Main extends Application
         buttonBar.getChildren().addAll(diceBtn, shopBtn, tradeBtn, nextBtn);
         root.getChildren().add(buttonBar);
         
+        rootPane = root;
+
         Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
         primaryStage.setTitle("MONOPOLY LOOKING AHH GAME");
         primaryStage.setScene(scene);
@@ -786,6 +787,97 @@ public class Main extends Application
         shopBtn.setDisable(true);
         tradeBtn.setDisable(true);
         nextBtn.setDisable(true);
+    }
+    private static int getResourceAmount(Player player, String resourceType)
+    {
+        switch (resourceType)
+        {
+            case "TALENT": return player.talentCount;
+            case "CAPITAL": return player.capitalCount;
+            case "CLOUD": return player.cloudCount;
+            case "PATENT": return player.patentCount;
+            case "DATA": return player.dataCount;
+            default: return 0;
+        }
+    }
+    private static HBox createShopRow(String name, int price, int currentAmount, String resourceType, Player player, VBox dialog, Pane overlay, Text capitalText)
+    {
+        HBox row = new HBox(15);
+        row.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        row.setStyle("-fx-padding: 5;");
+        
+        Text nameText = new Text(name);
+        nameText.setFill(Color.WHITE);
+        nameText.setFont(Font.font(14));
+        
+        Text priceText = new Text(price + " 💰");
+        priceText.setFill(Color.web(CONSTS.COLOR_GREEN));
+        priceText.setFont(Font.font(14));
+        
+        Text amountText = new Text("Owned: " + currentAmount);
+        amountText.setFill(Color.LIGHTGRAY);
+        amountText.setFont(Font.font(12));
+        
+        Button buyBtn = new Button("BUY");
+        buyBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 5 15; -fx-background-radius: 5;");
+        buyBtn.setCursor(javafx.scene.Cursor.HAND);
+        buyBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(buyBtn, 1.2, 300).play());
+        buyBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(buyBtn, 1.0, 300).play());
+        
+        buyBtn.setOnAction(e -> {
+            if (player.capitalCount >= price)
+            {
+                player.capitalCount -= price;
+                
+                switch (resourceType)
+                {
+                    case "TALENT":
+                        player.talentCount += 1;
+                        talentwasBought = true;
+                        talentNotBoughtForNRounds = 0;
+                        break;
+                    case "CLOUD":
+                        player.cloudCount += 1;
+                        cloudwasBought = true;
+                        cloudNotBoughtForNRounds = 0;
+                        break;
+                    case "PATENT":
+                        player.patentCount += 1;
+                        patentwasBought = true;
+                        patentNotBoughtForNRounds = 0;
+                        break;
+                    case "DATA":
+                        player.dataCount += 1;
+                        datawasBought = true;
+                        dataNotBoughtForNRounds = 0;
+                        break;
+                }
+                
+                capitalText.setText("💰: " + player.capitalCount);
+                amountText.setText("OWNED: " + getResourceAmount(player, resourceType));
+                
+                Text successMsg = new Text("Purchased " + name + "!");
+                successMsg.setFill(Color.web(CONSTS.COLOR_GREEN));
+                successMsg.setFont(Font.font(12));
+                dialog.getChildren().add(successMsg);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(1.5));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(successMsg));
+                pause.play();
+            }
+            else
+            {
+                Text errorMsg = new Text("GET YO BROKE AHH OUTTA HERE!");
+                errorMsg.setFill(Color.RED);
+                errorMsg.setFont(Font.font(12));
+                dialog.getChildren().add(errorMsg);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(errorMsg));
+                pause.play();
+            }
+        });
+        
+        row.getChildren().addAll(nameText, priceText, amountText, buyBtn);
+        return row;
     }
     public static void rollDice()
     {
@@ -850,10 +942,63 @@ public class Main extends Application
         updateButtonsAfterRoll();
     }
 
-    public static void openShop()
+    public static void openShop(Player player)
     {
-        // TODO: Implement shop logic
-        System.out.println("Shop opened!");
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        WritableImage snapshot = rootPane.snapshot(params, null);
+        
+        ImageView backgroundImage = new ImageView(snapshot);
+        GaussianBlur blur = new GaussianBlur(10);
+        backgroundImage.setEffect(blur);
+        
+        Pane overlay = new Pane();
+        overlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        overlay.getChildren().add(backgroundImage);
+        
+        VBox dialog = new VBox(15);
+        dialog.setAlignment(javafx.geometry.Pos.CENTER);
+        dialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_GREEN + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        dialog.setPrefWidth(350);
+        dialog.setPrefHeight(450);
+        
+        Text titleText = new Text("SHOP");
+        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
+        titleText.setFill(Color.WHITE);
+        titleText.setStyle("-fx-font-weight: bold;");
+        
+        Text capitalText = new Text("💰: " + player.capitalCount);
+        capitalText.setFill(Color.web(CONSTS.COLOR_GREEN));
+        capitalText.setFont(Font.font(16));
+        capitalText.setStyle("-fx-font-weight: bold;");
+        
+        VBox pricesBox = new VBox(10);
+        pricesBox.setAlignment(javafx.geometry.Pos.CENTER);
+        pricesBox.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-background-radius: 10;");
+        
+        HBox talentRow = createShopRow("🎓", talentPrice, player.talentCount, "TALENT", player, dialog, overlay, capitalText);
+        HBox cloudRow = createShopRow("☁️", cloudPrice, player.cloudCount, "CLOUD", player, dialog, overlay, capitalText);
+        HBox patentRow = createShopRow("📜", patentPrice, player.patentCount, "PATENT", player, dialog, overlay, capitalText);
+        HBox dataRow = createShopRow("📊", dataPrice, player.dataCount, "DATA", player, dialog, overlay, capitalText);
+        
+        pricesBox.getChildren().addAll(talentRow, cloudRow, patentRow, dataRow);
+        
+        Button closeBtn = new Button("CLOSE");
+        closeBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_RED + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
+        closeBtn.setCursor(javafx.scene.Cursor.HAND);
+        closeBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(closeBtn, 1.2, 800).play());
+        closeBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(closeBtn, 1.0, 800).play());
+        closeBtn.setOnAction(e -> {
+            rootPane.getChildren().remove(overlay);
+            rootPane.setEffect(null);
+        });
+        
+        dialog.getChildren().addAll(titleText, capitalText, pricesBox, closeBtn);
+        dialog.setLayoutX((CONSTS.WINDOW_WIDTH - dialog.getPrefWidth()) / 2);
+        dialog.setLayoutY((CONSTS.WINDOW_HEIGHT - dialog.getPrefHeight()) / 2);
+        
+        overlay.getChildren().add(dialog);
+        rootPane.getChildren().add(overlay);
     }
 
     public static void openTrade()
@@ -865,6 +1010,32 @@ public class Main extends Application
     public static void nextTurn()
     {
         // TODO: Implement next player logic
+        if (!talentwasBought)
+            talentNotBoughtForNRounds += 1;
+        else
+            talentPrice = Math.min(6, talentPrice + 1);
+        if (!cloudwasBought)
+            cloudNotBoughtForNRounds += 1;
+        else
+            cloudPrice = Math.min(6, cloudPrice + 1);
+        if (!patentwasBought)
+            patentNotBoughtForNRounds += 1;
+        else
+            patentPrice = Math.min(6, patentPrice + 1);
+        if (!datawasBought)
+            dataNotBoughtForNRounds += 1;
+        else
+            dataPrice = Math.min(6, dataPrice + 1);
+
+        if (talentNotBoughtForNRounds >= 3)
+            talentPrice = Math.max(2, talentPrice - 1);
+        if (cloudNotBoughtForNRounds >= 3)
+            cloudPrice = Math.max(2, cloudPrice - 1);
+        if (patentNotBoughtForNRounds >= 3)
+            patentPrice = Math.max(2, patentPrice - 1);
+        if (dataNotBoughtForNRounds >= 3)
+            dataPrice = Math.max(2, dataPrice - 1);
+
         currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
         System.out.println("Next player: " + currentPlayerIdx);
         updateButtonsAfterNext();
