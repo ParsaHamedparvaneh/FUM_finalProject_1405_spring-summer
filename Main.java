@@ -72,10 +72,33 @@ class HELPERS
             rect.setFill(Color.web(CONSTS.SECTOR_COLORS_HM.get(sector.type)));
             rect.setStroke(Color.BLACK);
             rect.setStrokeWidth(2);
+
+            if (sector.hasTaxAgent)
+                sectorPane.setOpacity(0.4);
+
+            if (sector.hasTaxAgent)
+            {
+                Color originalColor = Color.web(CONSTS.SECTOR_COLORS_HM.get(sector.type));
+                rect.setFill(originalColor.desaturate().deriveColor(0, 0, 0.5, 0.5));
+            }
+            else
+            {
+                rect.setFill(Color.web(CONSTS.SECTOR_COLORS_HM.get(sector.type)));
+                rect.setStroke(Color.BLACK);
+                rect.setStrokeWidth(2);
+            }
             
             VBox vbox = new javafx.scene.layout.VBox(5);
             vbox.setAlignment(javafx.geometry.Pos.CENTER);
             
+            if (sector.hasTaxAgent)
+            {
+                Text warningText = new Text("X");
+                warningText.setFont(Font.font(20));
+                warningText.setFill(Color.LIGHTGRAY);
+                vbox.getChildren().add(warningText);
+            }
+
             Text typeText = new Text(sector.type);
             typeText.setFill(Color.WHITE);
             typeText.setFont(CONSTS.CUSTOM_FONT);
@@ -85,6 +108,12 @@ class HELPERS
             dieText.setFill(Color.WHITE);
             dieText.setFont(CONSTS.CUSTOM_FONT);
             dieText.setStyle("-fx-font-weight: bold;");
+
+            if (sector.hasTaxAgent)
+            {
+                typeText.setFill(Color.LIGHTGRAY);
+                dieText.setFill(Color.LIGHTGRAY);
+            }
             
             vbox.getChildren().addAll(typeText, dieText);
             sectorPane.getChildren().addAll(rect, vbox);
