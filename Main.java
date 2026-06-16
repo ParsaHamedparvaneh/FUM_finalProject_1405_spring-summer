@@ -5,6 +5,7 @@ import javafx.scene.layout.*;
 import javafx.application.Application;
 import javafx.scene.control.Button;
 import javafx.scene.control.RadioButton;
+import javafx.scene.control.Spinner;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.GaussianBlur;
@@ -13,6 +14,7 @@ import javafx.scene.image.WritableImage;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.shape.Line;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
 import javafx.stage.Stage;
@@ -76,12 +78,12 @@ class HELPERS
             
             Text typeText = new Text(sector.type);
             typeText.setFill(Color.WHITE);
-            typeText.setFont(CONSTS.CUSTOM_FONT != null ? CONSTS.CUSTOM_FONT : Font.font(10));
+            typeText.setFont(CONSTS.CUSTOM_FONT);
             typeText.setStyle("-fx-font-weight: bold;");
             
             Text dieText = new Text(String.valueOf(sector.dieNum));
             dieText.setFill(Color.WHITE);
-            dieText.setFont(CONSTS.CUSTOM_FONT != null ? CONSTS.CUSTOM_FONT : Font.font(14));
+            dieText.setFont(CONSTS.CUSTOM_FONT);
             dieText.setStyle("-fx-font-weight: bold;");
             
             vbox.getChildren().addAll(typeText, dieText);
@@ -156,6 +158,91 @@ class HELPERS
             }
         }
     }
+    public static void drawEdges(Pane root, Edge horizontalEdges[][], Edge verticalEdges[][])
+    {
+        for (int i = 0; i<horizontalEdges.length; i++)
+        {
+            for (int j = 0; j<horizontalEdges[i].length; j++)
+            {
+                Edge edge = horizontalEdges[i][j];
+                double x1 = CONSTS.OFFSET_X + j * CONSTS.CELL_SIZE;
+                double y = CONSTS.OFFSET_Y + i * CONSTS.CELL_SIZE;
+                double x2 = x1 + CONSTS.CELL_SIZE;
+                
+                Line line = new Line(x1, y, x2, y);
+                line.setStroke(getEdgeColor(edge));
+                line.setStrokeWidth(4);
+                line.setUserData(edge);
+                
+                line.setOnMouseEntered(event -> {
+                    if (Main.canInteractWithVertices && (edge.owner == null || edge.owner == Main.getCurrentPlayer()))
+                        line.setStroke(Color.LIGHTGRAY);
+                });
+                
+                line.setOnMouseExited(event -> {
+                    if (Main.canInteractWithVertices && (edge.owner == null || edge.owner == Main.getCurrentPlayer()))
+                    {
+                        line.setStrokeWidth(4);
+                        line.setStroke(getEdgeColor(edge));
+                    }
+                });
+                
+                line.setOnMouseClicked(event -> {
+                    if (Main.canInteractWithVertices && edge.owner == null)
+                    {
+                        Player currentPlayer = Main.getCurrentPlayer();
+                        if (Main.canBuyEdge(edge, currentPlayer))
+                            Main.showEdgePurchaseDialog(root, edge, currentPlayer);
+                    }
+                });
+                line.setCursor(javafx.scene.Cursor.HAND);
+                
+                root.getChildren().add(line);
+            }
+        }
+        
+        for (int i = 0; i<verticalEdges.length; i++)
+        {
+            for (int j = 0; j<verticalEdges[i].length; j++)
+            {
+                Edge edge = verticalEdges[i][j];
+                double x = CONSTS.OFFSET_X + j * CONSTS.CELL_SIZE;
+                double y1 = CONSTS.OFFSET_Y + i * CONSTS.CELL_SIZE;
+                double y2 = y1 + CONSTS.CELL_SIZE;
+                
+                javafx.scene.shape.Line line = new javafx.scene.shape.Line(x, y1, x, y2);
+                line.setStroke(getEdgeColor(edge));
+                line.setStrokeWidth(4);
+                line.setUserData(edge);
+                
+                line.setOnMouseEntered(event -> {
+                    if (Main.canInteractWithVertices && (edge.owner == null || edge.owner == Main.getCurrentPlayer()))
+                        line.setStroke(Color.LIGHTGRAY);
+                });
+                
+                line.setOnMouseExited(event -> {
+                    if (Main.canInteractWithVertices && (edge.owner == null || edge.owner == Main.getCurrentPlayer()))
+                    {
+                        line.setStrokeWidth(4);
+                        line.setStroke(getEdgeColor(edge));
+                    }
+                });
+                
+                line.setOnMouseClicked(event -> {
+                    if (Main.canInteractWithVertices && edge.owner == null)
+                    {
+                        Player currentPlayer = Main.getCurrentPlayer();
+                        if (Main.canBuyEdge(edge, currentPlayer))
+                            Main.showEdgePurchaseDialog(root, edge, currentPlayer);
+                    }
+                });
+                line.setCursor(javafx.scene.Cursor.HAND);
+                
+                root.getChildren().add(line);
+            }
+        }
+    }
+
     public static void showPurchaseMenu(Pane root, Vertex vertex, Player player)
     {
         SnapshotParameters params = new SnapshotParameters();
@@ -245,7 +332,7 @@ class HELPERS
 
     public static void showVertexInfo(Pane root, Vertex vertex, Player player)
     {
-        System.out.println("Vertex " + vertex.idx + " owned by Player " + (vertex.owner.idx + 1) + " | Type: " + vertex.type);
+        System.out.println("UNICORN " + vertex.idx + " owned by Player " + (vertex.owner.idx + 1));
     }
 
     public static Color getVertexColor(Vertex vertex)
@@ -253,6 +340,18 @@ class HELPERS
         if (vertex.owner == null) return Color.LIGHTGRAY;
         
         int playerIdx = vertex.owner.idx;
+        if (playerIdx == 0) return Color.web(CONSTS.PLAYER_1_COLOR);
+        if (playerIdx == 1) return Color.web(CONSTS.PLAYER_2_COLOR);
+        if (playerIdx == 2) return Color.web(CONSTS.PLAYER_3_COLOR);
+        if (playerIdx == 3) return Color.web(CONSTS.PLAYER_4_COLOR);
+        
+        return Color.LIGHTGRAY;
+    }
+    public static Color getEdgeColor(Edge edge)
+    {
+        if (edge.owner == null) return Color.LIGHTGRAY;
+        
+        int playerIdx = edge.owner.idx;
         if (playerIdx == 0) return Color.web(CONSTS.PLAYER_1_COLOR);
         if (playerIdx == 1) return Color.web(CONSTS.PLAYER_2_COLOR);
         if (playerIdx == 2) return Color.web(CONSTS.PLAYER_3_COLOR);
@@ -303,7 +402,7 @@ class HELPERS
         dialog.setPrefHeight(250);
         
         Text titleText = new Text("GET " + type);
-        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT != null ? CONSTS.CUSTOM_FONT.getFamily() : "Arial", 20));
+        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
         titleText.setFill(Color.WHITE);
         titleText.setStyle("-fx-font-weight: bold;");
         
@@ -414,7 +513,6 @@ class HELPERS
             costs = CONSTS.MVP_COST.get(0);
         else if (type.equals("UNICORN"))
             costs = CONSTS.UNICORN_COST.get(0);
-        // TODO: Add PARTNERSHIP case when costs are defined
         
         boolean hasEnough = true;
         for (Map.Entry<String, Integer> entry : costs.entrySet())
@@ -463,10 +561,6 @@ class HELPERS
             player.score += 1;
         else if (type.equals("UNICORN"))
             player.score += 2;
-        else if (type.equals("PARTNERSHIP"))
-        {
-            // TODO: Add PARTNERSHIP specific logic
-        }
         
         return true;
     }
@@ -659,6 +753,25 @@ class Vertex
     }
 }
 
+class Edge
+{
+    public int row1;
+    public int col1;
+    public int row2;
+    public int col2;
+    public Player owner;
+    
+    public Edge(int r1, int c1, int r2, int c2)
+    {
+        row1 = r1;
+        col1 = c1;
+        row2 = r2;
+        col2 = c2;
+        
+        owner = null;
+    }
+}
+
 class Sector
 {
     public int idx;
@@ -683,8 +796,15 @@ public class Main extends Application
     static Player PLAYERS[]      = new Player[CONSTS.MAX_PLAYER_COUNT];
     static int currentPlayerIdx  = 0;
     static int EDGES_FROM_TO[][] = new int[CONSTS.MAX_HEIGHT][CONSTS.MAX_WIDTH];
+    static Edge horizontalEdges[][];
+    static Edge verticalEdges[][];
+    static int HORIZONTAL_EDGE_COUNT;
+    static int VERTICAL_EDGE_COUNT;
     static Sector SECTORS[]      = new Sector[CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT];
     static Vertex VERTICES[][]   = new Vertex[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH+1];
+
+    static Player selectedTradePlayer = null;
+    static Map<String, Integer> currentOffer = new HashMap<String, Integer>();
 
     static Text diceStatusText;
 
@@ -727,6 +847,432 @@ public class Main extends Application
     }
 
     // APIs/others
+    public static void showTradeOffer(Player targetPlayer, Player currentPlayer)
+    {
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        WritableImage snapshot = rootPane.snapshot(params, null);
+        
+        ImageView backgroundImage = new ImageView(snapshot);
+        GaussianBlur blur = new GaussianBlur(10);
+        backgroundImage.setEffect(blur);
+        
+        Pane overlay = new Pane();
+        overlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        overlay.getChildren().add(backgroundImage);
+        
+        VBox dialog = new VBox(15);
+        dialog.setAlignment(javafx.geometry.Pos.CENTER);
+        dialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_GREEN + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        dialog.setPrefWidth(450);
+        dialog.setPrefHeight(500);
+        
+        Text titleText = new Text("PLAYER " + (targetPlayer.idx + 1) + " - VIEW OFFER");
+        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
+        titleText.setFill(Color.WHITE);
+        titleText.setStyle("-fx-font-weight: bold;");
+        
+        Text fromText = new Text("FROM PLAYER " + (currentPlayer.idx + 1));
+        fromText.setFill(Color.web(CONSTS.COLOR_GREEN));
+        fromText.setFont(Font.font(14));
+        
+        VBox giveBox = new VBox(5);
+        giveBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Text giveLabel = new Text("GET:");
+        giveLabel.setFill(Color.WHITE);
+        giveLabel.setFont(Font.font(14));
+        giveLabel.setStyle("-fx-font-weight: bold;");
+        
+        VBox giveList = new VBox(3);
+        giveList.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        String resources[] = {"TALENT", "CAPITAL", "CLOUD", "PATENT", "DATA"};
+        for (int i = 0; i<resources.length; i++)
+        {
+            int amount = currentOffer.get(resources[i] + "_GIVE");
+            if (amount > 0)
+            {
+                Text giveItem = new Text(resources[i] + ": " + amount);
+                giveItem.setFill(Color.WHITE);
+                giveItem.setFont(Font.font(12));
+                giveList.getChildren().add(giveItem);
+            }
+        }
+        if (giveList.getChildren().isEmpty())
+        {
+            Text none = new Text("NOTHING");
+            none.setFill(Color.LIGHTGRAY);
+            giveList.getChildren().add(none);
+        }
+        giveBox.getChildren().addAll(giveLabel, giveList);
+        
+        VBox receiveBox = new VBox(5);
+        receiveBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Text receiveLabel = new Text("GIVE:");
+        receiveLabel.setFill(Color.WHITE);
+        receiveLabel.setFont(Font.font(14));
+        receiveLabel.setStyle("-fx-font-weight: bold;");
+        
+        VBox receiveList = new VBox(3);
+        receiveList.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        for (int i = 0; i < resources.length; i++)
+        {
+            int amount = currentOffer.get(resources[i] + "_get");
+            if (amount > 0)
+            {
+                Text receiveItem = new Text(resources[i] + ": " + amount);
+                receiveItem.setFill(Color.WHITE);
+                receiveItem.setFont(Font.font(12));
+                receiveList.getChildren().add(receiveItem);
+            }
+        }
+        if (receiveList.getChildren().isEmpty())
+        {
+            Text none = new Text("NOTHING");
+            none.setFill(Color.LIGHTGRAY);
+            receiveList.getChildren().add(none);
+        }
+        receiveBox.getChildren().addAll(receiveLabel, receiveList);
+        
+        HBox buttonBox = new HBox(15);
+        buttonBox.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        Button acceptBtn = new Button("ACCEPT");
+        acceptBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        acceptBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(acceptBtn, 1.2, 1000).play());
+        acceptBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(acceptBtn, 1.0, 1000).play());
+        acceptBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        Button rejectBtn = new Button("REJECT");
+        rejectBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_RED + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        rejectBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(rejectBtn, 1.2, 1000).play());
+        rejectBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(rejectBtn, 1.0, 1000).play());
+        rejectBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        acceptBtn.setOnAction(e -> {
+            boolean hasEnough = true;
+            if (currentOffer.get("TALENT_get") > targetPlayer.talentCount) hasEnough = false;
+            if (currentOffer.get("CAPITAL_get") > targetPlayer.capitalCount) hasEnough = false;
+            if (currentOffer.get("CLOUD_get") > targetPlayer.cloudCount) hasEnough = false;
+            if (currentOffer.get("PATENT_get") > targetPlayer.patentCount) hasEnough = false;
+            if (currentOffer.get("DATA_get") > targetPlayer.dataCount) hasEnough = false;
+            
+            if (!hasEnough)
+            {
+                Text error = new Text("GET YO BROKE AHH OUTTA HERE");
+                error.setFill(Color.RED);
+                dialog.getChildren().add(error);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(error));
+                pause.play();
+                return;
+            }
+            
+            for (String resource : resources)
+            {
+                int giveAmount = currentOffer.get(resource + "_GIVE");
+                int receiveAmount = currentOffer.get(resource + "_get");
+                
+                switch (resource)
+                {
+                    case "TALENT": currentPlayer.talentCount -= giveAmount; break;
+                    case "CAPITAL": currentPlayer.capitalCount -= giveAmount; break;
+                    case "CLOUD": currentPlayer.cloudCount -= giveAmount; break;
+                    case "PATENT": currentPlayer.patentCount -= giveAmount; break;
+                    case "DATA": currentPlayer.dataCount -= giveAmount; break;
+                }
+                
+                switch (resource)
+                {
+                    case "TALENT": targetPlayer.talentCount -= receiveAmount; break;
+                    case "CAPITAL": targetPlayer.capitalCount -= receiveAmount; break;
+                    case "CLOUD": targetPlayer.cloudCount -= receiveAmount; break;
+                    case "PATENT": targetPlayer.patentCount -= receiveAmount; break;
+                    case "DATA": targetPlayer.dataCount -= receiveAmount; break;
+                }
+                
+                switch (resource)
+                {
+                    case "TALENT": currentPlayer.talentCount += receiveAmount; break;
+                    case "CAPITAL": currentPlayer.capitalCount += receiveAmount; break;
+                    case "CLOUD": currentPlayer.cloudCount += receiveAmount; break;
+                    case "PATENT": currentPlayer.patentCount += receiveAmount; break;
+                    case "DATA": currentPlayer.dataCount += receiveAmount; break;
+                }
+                
+                switch (resource)
+                {
+                    case "TALENT": targetPlayer.talentCount += giveAmount; break;
+                    case "CAPITAL": targetPlayer.capitalCount += giveAmount; break;
+                    case "CLOUD": targetPlayer.cloudCount += giveAmount; break;
+                    case "PATENT": targetPlayer.patentCount += giveAmount; break;
+                    case "DATA": targetPlayer.dataCount += giveAmount; break;
+                }
+            }
+            
+            rootPane.getChildren().remove(overlay);
+            rootPane.setEffect(null);
+            
+            Pane successOverlay = new Pane();
+            successOverlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+            VBox successDialog = new VBox(15);
+            successDialog.setAlignment(javafx.geometry.Pos.CENTER);
+            successDialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25;");
+            successDialog.setPrefWidth(300);
+            successDialog.setPrefHeight(150);
+            Text successText = new Text("TRADE COMPLETED");
+            successText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            successText.setFont(Font.font(16));
+            successText.setStyle("-fx-font-weight: bold;");
+            Button okBtn = new Button("COOL");
+            okBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
+            okBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.2, 1000).play());
+            okBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.0, 1000).play());
+            okBtn.setOnAction(ev -> rootPane.getChildren().remove(successOverlay));
+            okBtn.setCursor(javafx.scene.Cursor.HAND);
+            successDialog.getChildren().addAll(successText, okBtn);
+            successDialog.setLayoutX((CONSTS.WINDOW_WIDTH - successDialog.getPrefWidth()) / 2);
+            successDialog.setLayoutY((CONSTS.WINDOW_HEIGHT - successDialog.getPrefHeight()) / 2);
+            successOverlay.getChildren().add(successDialog);
+            rootPane.getChildren().add(successOverlay);
+        });
+        
+        rejectBtn.setOnAction(e -> {
+            rootPane.getChildren().remove(overlay);
+            rootPane.setEffect(null);
+            
+            Pane rejectOverlay = new Pane();
+            rejectOverlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+            VBox rejectDialog = new VBox(15);
+            rejectDialog.setAlignment(javafx.geometry.Pos.CENTER);
+            rejectDialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25;");
+            rejectDialog.setPrefWidth(300);
+            rejectDialog.setPrefHeight(150);
+            Text rejectText = new Text("TRADE BLOWN");
+            rejectText.setFill(Color.RED);
+            rejectText.setFont(Font.font(16));
+            rejectText.setStyle("-fx-font-weight: bold;");
+            Button okBtn = new Button("😭");
+            okBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_RED + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
+            okBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.2, 1000).play());
+            okBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.0, 1000).play());
+            okBtn.setOnAction(ev -> rootPane.getChildren().remove(rejectOverlay));
+            okBtn.setCursor(javafx.scene.Cursor.HAND);
+            rejectDialog.getChildren().addAll(rejectText, okBtn);
+            rejectDialog.setLayoutX((CONSTS.WINDOW_WIDTH - rejectDialog.getPrefWidth()) / 2);
+            rejectDialog.setLayoutY((CONSTS.WINDOW_HEIGHT - rejectDialog.getPrefHeight()) / 2);
+            rejectOverlay.getChildren().add(rejectDialog);
+            rootPane.getChildren().add(rejectOverlay);
+        });
+        
+        buttonBox.getChildren().addAll(acceptBtn, rejectBtn);
+        
+        dialog.getChildren().addAll(titleText, fromText, giveBox, receiveBox, buttonBox);
+        dialog.setLayoutX((CONSTS.WINDOW_WIDTH - dialog.getPrefWidth()) / 2);
+        dialog.setLayoutY((CONSTS.WINDOW_HEIGHT - dialog.getPrefHeight()) / 2);
+        
+        overlay.getChildren().add(dialog);
+        rootPane.getChildren().add(overlay);
+    }
+    public static boolean canBuyEdge(Edge edge, Player player)
+    {
+        int vertices[][] = {{edge.row1, edge.col1}, {edge.row2, edge.col2}};
+        
+        for (int v[] : vertices)
+        {
+            int r = v[0];
+            int c = v[1];
+            if (r >= 0 && r < VERTICES.length && c >= 0 && c < VERTICES[0].length)
+            {
+                Vertex vertex = VERTICES[r][c];
+                if (vertex.owner == player && (vertex.type.equals(CONSTS.VERTEX_TYPE_MVP) || vertex.type.equals(CONSTS.VERTEX_TYPE_UNICORN)))
+                    return true;
+            }
+        }
+        
+        // horizontal
+        if (edge.row1 == edge.row2)
+        {
+            if (edge.col1 > 0)
+            {
+                Edge leftEdge = horizontalEdges[edge.row1][edge.col1-1];
+                if (leftEdge.owner == player)
+                    return true;
+            }
+            if (edge.col2 < CONSTS.MAX_WIDTH)
+            {
+                Edge rightEdge = horizontalEdges[edge.row1][edge.col1+1];
+                if (rightEdge.owner == player)
+                    return true;
+            }
+            if (edge.row1 > 0)
+            {
+                Edge topLeftVertical = verticalEdges[edge.row1-1][edge.col1];
+                if (topLeftVertical.owner == player)
+                    return true;
+                Edge topRightVertical = verticalEdges[edge.row1-1][edge.col2];
+                if (topRightVertical.owner == player)
+                    return true;
+            }
+            if (edge.row1 < CONSTS.MAX_HEIGHT)
+            {
+                Edge bottomLeftVertical = verticalEdges[edge.row1][edge.col1];
+                if (bottomLeftVertical.owner == player)
+                    return true;
+                Edge bottomRightVertical = verticalEdges[edge.row1][edge.col2];
+                if (bottomRightVertical.owner == player)
+                    return true;
+            }
+        }
+        // vertical
+        else
+        {
+            if (edge.row1 > 0)
+            {
+                Edge aboveEdge = verticalEdges[edge.row1-1][edge.col1];
+                if (aboveEdge.owner == player)
+                    return true;
+            }
+            if (edge.row2 < CONSTS.MAX_HEIGHT)
+            {
+                Edge belowEdge = verticalEdges[edge.row1+1][edge.col1];
+                if (belowEdge.owner == player)
+                    return true;
+            }
+            if (edge.col1 > 0)
+            {
+                Edge leftTopHorizontal = horizontalEdges[edge.row1][edge.col1-1];
+                if (leftTopHorizontal.owner == player)
+                    return true;
+                Edge leftBottomHorizontal = horizontalEdges[edge.row2][edge.col1-1];
+                if (leftBottomHorizontal.owner == player)
+                    return true;
+            }
+            if (edge.col1 < CONSTS.MAX_WIDTH)
+            {
+                Edge rightTopHorizontal = horizontalEdges[edge.row1][edge.col1];
+                if (rightTopHorizontal.owner == player)
+                    return true;
+                Edge rightBottomHorizontal = horizontalEdges[edge.row2][edge.col1];
+                if (rightBottomHorizontal.owner == player)
+                    return true;
+            }
+        }
+        
+        return false;
+    }
+
+    public static void showEdgePurchaseDialog(Pane root, Edge edge, Player player)
+    {
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        WritableImage snapshot = rootPane.snapshot(params, null);
+        
+        ImageView backgroundImage = new ImageView(snapshot);
+        GaussianBlur blur = new GaussianBlur(10);
+        backgroundImage.setEffect(blur);
+        
+        Pane overlay = new Pane();
+        overlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        overlay.getChildren().add(backgroundImage);
+        
+        VBox dialog = new VBox(15);
+        dialog.setAlignment(javafx.geometry.Pos.CENTER);
+        dialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_GREEN + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        dialog.setPrefWidth(300);
+        dialog.setPrefHeight(200);
+        
+        Text titleText = new Text("TURN TO PARTNERSHIP");
+        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
+        titleText.setFill(Color.WHITE);
+        titleText.setStyle("-fx-font-weight: bold;");
+        
+        VBox costBox = new VBox(5);
+        costBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Text costTitle = new Text("COSTS:");
+        costTitle.setFill(Color.WHITE);
+        costTitle.setFont(Font.font(14));
+        
+        VBox resourceList = new VBox(3);
+        resourceList.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        Text capitalText = new Text("CAPITAL: " + player.capitalCount + "/1");
+        capitalText.setFill(player.capitalCount >= 1 ? Color.web(CONSTS.COLOR_GREEN) : Color.web(CONSTS.COLOR_RED));
+        capitalText.setFont(Font.font(12));
+        
+        Text patentText = new Text("PATENT: " + player.patentCount + "/1");
+        patentText.setFill(player.patentCount >= 1 ? Color.web(CONSTS.COLOR_GREEN) : Color.web(CONSTS.COLOR_RED));
+        patentText.setFont(Font.font(12));
+        
+        resourceList.getChildren().addAll(capitalText, patentText);
+        
+        HBox buttonBox = new HBox(15);
+        buttonBox.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        Button purchaseBtn = new Button("PAY");
+        purchaseBtn.setStyle("-fx-background-color: "+CONSTS.COLOR_GREEN+"; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
+        purchaseBtn.setCursor(javafx.scene.Cursor.HAND);
+        purchaseBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(purchaseBtn, 1.2, 800).play());
+        purchaseBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(purchaseBtn, 1.0, 800).play());
+        purchaseBtn.setOnAction(e -> {
+            if (player.capitalCount >= 1 && player.patentCount >= 1)
+            {
+                player.capitalCount -= 1;
+                player.patentCount -= 1;
+                edge.owner = player;
+                
+                rootPane.getChildren().remove(overlay);
+                rootPane.setEffect(null);
+                refreshEdgesColor();
+            }
+            else
+            {
+                Text errorMsg = new Text("GET YO BROKE AHH OUTTA HERE!");
+                errorMsg.setFill(Color.RED);
+                dialog.getChildren().add(errorMsg);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(errorMsg));
+                pause.play();
+            }
+        });
+        
+        Button cancelBtn = new Button("CANCEL");
+        cancelBtn.setStyle("-fx-background-color: "+CONSTS.COLOR_RED+"; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
+        cancelBtn.setCursor(javafx.scene.Cursor.HAND);
+        cancelBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(cancelBtn, 1.2, 800).play());
+        cancelBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(cancelBtn, 1.0, 800).play());
+        cancelBtn.setOnAction(e -> {
+            rootPane.getChildren().remove(overlay);
+            rootPane.setEffect(null);
+        });
+        
+        buttonBox.getChildren().addAll(purchaseBtn, cancelBtn);
+        costBox.getChildren().addAll(costTitle, resourceList);
+        dialog.getChildren().addAll(titleText, costBox, buttonBox);
+        
+        dialog.setLayoutX((CONSTS.WINDOW_WIDTH - dialog.getPrefWidth()) / 2);
+        dialog.setLayoutY((CONSTS.WINDOW_HEIGHT - dialog.getPrefHeight()) / 2);
+        
+        overlay.getChildren().add(dialog);
+        rootPane.getChildren().add(overlay);
+    }
+    public static void refreshEdgesColor()
+    {
+        for (Node node : rootPane.getChildren())
+        {
+            if (node instanceof Line)
+            {
+                Line line = (Line) node;
+                Object userData = line.getUserData();
+                if (userData instanceof Edge)
+                {
+                    Edge edge = (Edge) userData;
+                    line.setStroke(HELPERS.getEdgeColor(edge));
+                }
+            }
+        }
+    }
     public static void showPlayerSelection(Stage primaryStage)
     {
         Pane selectionPane = new Pane();
@@ -790,7 +1336,7 @@ public class Main extends Application
         
         Scene selectionScene = new Scene(selectionPane, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
         primaryStage.setScene(selectionScene);
-        primaryStage.setTitle("MONOPOLY LOOKING AHH GAME");
+        primaryStage.setTitle("RAGS TO RICHES");
         primaryStage.show();
     }
     public static void showRoleSelection(Stage primaryStage)
@@ -871,7 +1417,7 @@ public class Main extends Application
             
             if (selectedRole == null)
             {
-                Text error = new Text("Select a role");
+                Text error = new Text("SELECT A ROLE");
                 error.setFill(Color.RED);
                 roleBox.getChildren().add(error);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
@@ -921,10 +1467,18 @@ public class Main extends Application
     public static void initGame(Stage primaryStage)
     {
         // INIT EDGES
-        EDGES_FROM_TO = new int[CONSTS.MAX_HEIGHT][CONSTS.MAX_WIDTH];
-        for (int i = 0; i<CONSTS.MAX_HEIGHT; i++)
+        HORIZONTAL_EDGE_COUNT = CONSTS.MAX_HEIGHT;
+        VERTICAL_EDGE_COUNT = CONSTS.MAX_WIDTH;
+        horizontalEdges = new Edge[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH];
+        verticalEdges = new Edge[CONSTS.MAX_HEIGHT][CONSTS.MAX_WIDTH+1];
+
+        for (int i = 0; i<=CONSTS.MAX_HEIGHT; i++)
             for (int j = 0; j<CONSTS.MAX_WIDTH; j++)
-                EDGES_FROM_TO[i][j] = 0;
+                horizontalEdges[i][j] = new Edge(i, j, i, j + 1);
+
+        for (int i = 0; i<CONSTS.MAX_HEIGHT; i++)
+            for (int j = 0; j<=CONSTS.MAX_WIDTH; j++)
+                verticalEdges[i][j] = new Edge(i, j, i + 1, j);
         // END INIT EDGES
         
         // INIT SECTORS
@@ -953,8 +1507,9 @@ public class Main extends Application
         root.setStyle("-fx-background-color: #000000;");
         
         HELPERS.drawSectors(root, SECTORS);
+        HELPERS.drawEdges(root, horizontalEdges, verticalEdges);
         HELPERS.drawVertices(root, VERTICES);
-        
+
         HBox buttonBar = new HBox(20);
         buttonBar.setAlignment(javafx.geometry.Pos.CENTER);
         buttonBar.setLayoutX(0);
@@ -1054,8 +1609,8 @@ public class Main extends Application
         Button buyBtn = new Button("BUY");
         buyBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 5 15; -fx-background-radius: 5;");
         buyBtn.setCursor(javafx.scene.Cursor.HAND);
-        buyBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(buyBtn, 1.2, 300).play());
-        buyBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(buyBtn, 1.0, 300).play());
+        buyBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(buyBtn, 1.2, 1000).play());
+        buyBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(buyBtn, 1.0, 1000).play());
         
         buyBtn.setOnAction(e -> {
             if (player.capitalCount >= price)
@@ -1115,7 +1670,7 @@ public class Main extends Application
     public static void createDiceStatusDisplay(Pane root)
     {
         diceStatusText = new Text("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
-        diceStatusText.setFont(Font.font(CONSTS.CUSTOM_FONT != null ? CONSTS.CUSTOM_FONT.getFamily() : "Arial", 16));
+        diceStatusText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
         diceStatusText.setFill(Color.WHITE);
         diceStatusText.setStyle("-fx-font-weight: bold;");
         diceStatusText.setLayoutX((CONSTS.WINDOW_WIDTH - 300) / 2);
@@ -1252,8 +1807,190 @@ public class Main extends Application
 
     public static void openTrade()
     {
-        // TODO: Implement trade logic
-        System.out.println("Trade opened!");
+        Player currentPlayer = getCurrentPlayer();
+        
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        WritableImage snapshot = rootPane.snapshot(params, null);
+        
+        ImageView backgroundImage = new ImageView(snapshot);
+        GaussianBlur blur = new GaussianBlur(10);
+        backgroundImage.setEffect(blur);
+        
+        Pane overlay = new Pane();
+        overlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        overlay.getChildren().add(backgroundImage);
+        
+        VBox dialog = new VBox(15);
+        dialog.setAlignment(javafx.geometry.Pos.CENTER);
+        dialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_GREEN + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        dialog.setPrefWidth(500);
+        dialog.setPrefHeight(600);
+        
+        Text titleText = new Text("PLAYER " + (currentPlayer.idx + 1) + " - SET UP OFFER");
+        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
+        titleText.setFill(Color.WHITE);
+        titleText.setStyle("-fx-font-weight: bold;");
+        
+        VBox playerBox = new VBox(10);
+        playerBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Text playerLabel = new Text("SELECT TRADE PARTNER:");
+        playerLabel.setFill(Color.WHITE);
+        playerLabel.setFont(Font.font(14));
+        
+        ToggleGroup playerGroup = new ToggleGroup();
+        VBox playerRadioBox = new VBox(5);
+        playerRadioBox.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        for (int i = 0; i<playerCount; i++)
+        {
+            if (i!=currentPlayer.idx)
+            {
+                RadioButton playerBtn = new RadioButton("PLAYER " + (i + 1));
+                playerBtn.setToggleGroup(playerGroup);
+                playerBtn.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+                playerBtn.setCursor(javafx.scene.Cursor.HAND);
+                playerRadioBox.getChildren().add(playerBtn);
+            }
+        }
+        playerBox.getChildren().addAll(playerLabel, playerRadioBox);
+        
+        VBox giveBox = new VBox(5);
+        giveBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Text giveLabel = new Text("GIVE:");
+        giveLabel.setFill(Color.web(CONSTS.COLOR_GREEN));
+        giveLabel.setFont(Font.font(14));
+        giveLabel.setStyle("-fx-font-weight: bold;");
+        
+        GridPane giveGrid = new GridPane();
+        giveGrid.setAlignment(javafx.geometry.Pos.CENTER);
+        giveGrid.setHgap(10);
+        giveGrid.setVgap(5);
+        
+        String resources[] = {"TALENT", "CAPITAL", "CLOUD", "PATENT", "DATA"};
+        int giveValues[] = {0, 0, 0, 0, 0};
+        Spinner<Integer>[] giveSpinners = new Spinner[5];
+        
+        for (int i = 0; i<resources.length; i++)
+        {
+            Text resourceText = new Text(resources[i]);
+            resourceText.setFill(Color.WHITE);
+            resourceText.setFont(Font.font(12));
+            
+            Spinner<Integer> spinner = new Spinner<Integer>(0, 99, 0);
+            spinner.setStyle("-fx-background-color: #333; -fx-text-fill: white;");
+            spinner.setEditable(true);
+            giveSpinners[i] = spinner;
+            
+            giveGrid.add(resourceText, 0, i);
+            giveGrid.add(spinner, 1, i);
+        }
+        giveBox.getChildren().addAll(giveLabel, giveGrid);
+        
+        VBox receiveBox = new VBox(5);
+        receiveBox.setAlignment(javafx.geometry.Pos.CENTER);
+        Text receiveLabel = new Text("GET:");
+        receiveLabel.setFill(Color.web(CONSTS.COLOR_GREEN));
+        receiveLabel.setFont(Font.font(14));
+        receiveLabel.setStyle("-fx-font-weight: bold;");
+        
+        GridPane receiveGrid = new GridPane();
+        receiveGrid.setAlignment(javafx.geometry.Pos.CENTER);
+        receiveGrid.setHgap(10);
+        receiveGrid.setVgap(5);
+        
+        int receiveValues[] = {0, 0, 0, 0, 0};
+        Spinner<Integer>[] receiveSpinners = new Spinner[5];
+        
+        for (int i = 0; i<resources.length; i++)
+        {
+            Text resourceText = new Text(resources[i]);
+            resourceText.setFill(Color.WHITE);
+            resourceText.setFont(Font.font(12));
+            
+            Spinner<Integer> spinner = new Spinner<Integer>(0, 99, 0);
+            spinner.setStyle("-fx-background-color: #333; -fx-text-fill: white;");
+            spinner.setEditable(true);
+            receiveSpinners[i] = spinner;
+            
+            receiveGrid.add(resourceText, 0, i);
+            receiveGrid.add(spinner, 1, i);
+        }
+        receiveBox.getChildren().addAll(receiveLabel, receiveGrid);
+        
+        HBox buttonBox = new HBox(15);
+        buttonBox.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        Button askBtn = new Button("OFFER");
+        askBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        askBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(askBtn, 1.2, 1000).play());
+        askBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(askBtn, 1.0, 1000).play());
+        askBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        Button cancelBtn = new Button("CANCEL");
+        cancelBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_RED + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        cancelBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(cancelBtn, 1.2, 1000).play());
+        cancelBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(cancelBtn, 1.0, 1000).play());
+        cancelBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        askBtn.setOnAction(e -> {
+            RadioButton selected = (RadioButton) playerGroup.getSelectedToggle();
+            if (selected == null)
+            {
+                Text error = new Text("SELECT A TRADE PARTNER");
+                error.setFill(Color.RED);
+                dialog.getChildren().add(error);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(error));
+                pause.play();
+                return;
+            }
+            
+            int selectedIdx = Integer.parseInt(selected.getText().split(" ")[1]) - 1;
+            selectedTradePlayer = PLAYERS[selectedIdx];
+            
+            currentOffer.clear();
+            for (int i = 0; i < resources.length; i++)
+            {
+                currentOffer.put(resources[i] + "_GIVE", giveSpinners[i].getValue());
+                currentOffer.put(resources[i] + "_get", receiveSpinners[i].getValue());
+            }
+            
+            boolean hasEnough = true;
+            if (giveSpinners[0].getValue() > currentPlayer.talentCount) hasEnough = false;
+            if (giveSpinners[1].getValue() > currentPlayer.capitalCount) hasEnough = false;
+            if (giveSpinners[2].getValue() > currentPlayer.cloudCount) hasEnough = false;
+            if (giveSpinners[3].getValue() > currentPlayer.patentCount) hasEnough = false;
+            if (giveSpinners[4].getValue() > currentPlayer.dataCount) hasEnough = false;
+            
+            if (!hasEnough)
+            {
+                Text error = new Text("GET YO BROKE AHH OUTTA HERE");
+                error.setFill(Color.RED);
+                dialog.getChildren().add(error);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(error));
+                pause.play();
+                return;
+            }
+            
+            rootPane.getChildren().remove(overlay);
+            showTradeOffer(selectedTradePlayer, currentPlayer);
+        });
+        
+        cancelBtn.setOnAction(e -> {
+            rootPane.getChildren().remove(overlay);
+            rootPane.setEffect(null);
+        });
+        
+        buttonBox.getChildren().addAll(askBtn, cancelBtn);
+        
+        dialog.getChildren().addAll(titleText, playerBox, giveBox, receiveBox, buttonBox);
+        dialog.setLayoutX((CONSTS.WINDOW_WIDTH - dialog.getPrefWidth()) / 2);
+        dialog.setLayoutY((CONSTS.WINDOW_HEIGHT - dialog.getPrefHeight()) / 2);
+        
+        overlay.getChildren().add(dialog);
+        rootPane.getChildren().add(overlay);
     }
 
     public static void nextTurn()
@@ -1313,7 +2050,7 @@ public class Main extends Application
         datawasBought = false;
 
         currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
-        System.out.println("Next player: " + currentPlayerIdx + 1);
+        System.out.println("Next player: " + (currentPlayerIdx + 1));
         diceStatusText.setText("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
         updateButtonsAfterNext();
     }
