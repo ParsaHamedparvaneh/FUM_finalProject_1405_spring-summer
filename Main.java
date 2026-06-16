@@ -929,12 +929,12 @@ public class Main extends Application
         
         if (vertex.owner == null)
         {
-            for (int i = 0; i<VERTICES.length; i++)
+            for (int i = 0; i < VERTICES.length; i++)
             {
-                for (int j = 0; j<VERTICES[i].length; j++)
+                for (int j = 0; j < VERTICES[i].length; j++)
                 {
                     Vertex owned = VERTICES[i][j];
-                    if (owned.owner == getCurrentPlayer())
+                    if (owned.owner != null)
                     {
                         double distance = HELPERS.getVertexDistance(vertex.idx, owned.idx);
                         if (distance <= 1)
