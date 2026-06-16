@@ -159,7 +159,7 @@ class HELPERS
                     }
                 });
                 stackPane.setOnMouseClicked(event -> {
-                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices)
+                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices && !Main.isPayingTax)
                     {
                         Player currentPlayer = Main.getCurrentPlayer();
                         
@@ -507,7 +507,7 @@ class HELPERS
             else
             {
                 Text errorMsg = new Text("GET YO BROKE AHH OUTTA HERE");
-                errorMsg.setFill(Color.RED);
+                errorMsg.setFill(Color.web(CONSTS.COLOR_RED));
                 dialog.getChildren().add(errorMsg);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
                 pause.setOnFinished(ev -> dialog.getChildren().remove(errorMsg));
@@ -848,6 +848,12 @@ public class Main extends Application
     static Sector selectedTaxSector = null;
     static Sector oldTaxSector = null;
 
+    static boolean isPayingTax = false;
+    static Player currentTaxPayer = null;
+    static int taxTarget = 0;
+    static int currentTaxPaid = 0;
+    static Map<String, Integer> taxSelection = new HashMap<String, Integer>();
+
     static Player selectedTradePlayer = null;
     static Map<String, Integer> currentOffer = new HashMap<String, Integer>();
 
@@ -894,8 +900,17 @@ public class Main extends Application
     // APIs/others
     public static void startSectorSelection()
     {
+        if (isPayingTax) return;
         isSelectingSector = true;
         canInteractWithVertices = false;
+        diceBtn.setDisable(true);
+        shopBtn.setDisable(true);
+        tradeBtn.setDisable(true);
+        nextBtn.setDisable(true);
+
+        isSelectingSector = true;
+        canInteractWithVertices = false;
+
         diceBtn.setDisable(true);
         shopBtn.setDisable(true);
         tradeBtn.setDisable(true);
@@ -1015,12 +1030,14 @@ public class Main extends Application
         sector.hasTaxAgent = true;
         
         refreshSectors();
-        // HERE MAYBE?
+        
         canInteractWithVertices = true;
         diceBtn.setDisable(true);
         shopBtn.setDisable(false);
         tradeBtn.setDisable(false);
         nextBtn.setDisable(false);
+        
+        diceStatusText.setText("⚄: 7");
         
         processDiceRoll();
     }
@@ -1177,7 +1194,7 @@ public class Main extends Application
             if (!hasEnough)
             {
                 Text error = new Text("GET YO BROKE AHH OUTTA HERE");
-                error.setFill(Color.RED);
+                error.setFill(Color.web(CONSTS.COLOR_RED));
                 dialog.getChildren().add(error);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
                 pause.setOnFinished(ev -> dialog.getChildren().remove(error));
@@ -1266,7 +1283,7 @@ public class Main extends Application
             rejectDialog.setPrefWidth(300);
             rejectDialog.setPrefHeight(150);
             Text rejectText = new Text("TRADE BLOWN");
-            rejectText.setFill(Color.RED);
+            rejectText.setFill(Color.web(CONSTS.COLOR_RED));
             rejectText.setFont(Font.font(16));
             rejectText.setStyle("-fx-font-weight: bold;");
             Button okBtn = new Button("😭");
@@ -1445,7 +1462,7 @@ public class Main extends Application
             else
             {
                 Text errorMsg = new Text("GET YO BROKE AHH OUTTA HERE!");
-                errorMsg.setFill(Color.RED);
+                errorMsg.setFill(Color.web(CONSTS.COLOR_RED));
                 dialog.getChildren().add(errorMsg);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
                 pause.setOnFinished(ev -> dialog.getChildren().remove(errorMsg));
@@ -1634,7 +1651,7 @@ public class Main extends Application
             if (selectedRole == null)
             {
                 Text error = new Text("SELECT A ROLE");
-                error.setFill(Color.RED);
+                error.setFill(Color.web(CONSTS.COLOR_RED));
                 roleBox.getChildren().add(error);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
                 pause.setOnFinished(ev -> roleBox.getChildren().remove(error));
@@ -1872,7 +1889,7 @@ public class Main extends Application
             else
             {
                 Text errorMsg = new Text("GET YO BROKE AHH OUTTA HERE!");
-                errorMsg.setFill(Color.RED);
+                errorMsg.setFill(Color.web(CONSTS.COLOR_RED));
                 errorMsg.setFont(Font.font(12));
                 dialog.getChildren().add(errorMsg);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
@@ -1894,6 +1911,173 @@ public class Main extends Application
         diceStatusText.setLayoutY(CONSTS.WINDOW_HEIGHT - 110);
         root.getChildren().add(diceStatusText);
     }
+    public static void showTaxDialog(List<Player> players, int playerIndex)
+    {
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        WritableImage snapshot = rootPane.snapshot(params, null);
+        
+        ImageView backgroundImage = new ImageView(snapshot);
+        GaussianBlur blur = new GaussianBlur(10);
+        backgroundImage.setEffect(blur);
+        
+        Pane overlay = new Pane();
+        overlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        overlay.getChildren().add(backgroundImage);
+        
+        VBox dialog = new VBox(15);
+        dialog.setAlignment(javafx.geometry.Pos.CENTER);
+        dialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_RED + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        dialog.setPrefWidth(400);
+        dialog.setPrefHeight(550);
+        
+        Text titleText = new Text("💰 BRING ME THE MONEY BOI! 💰");
+        titleText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 24));
+        titleText.setFill(Color.web(CONSTS.COLOR_RED));
+        titleText.setStyle("-fx-font-weight: bold;");
+        
+        Text infoText = new Text("PLAYER " + (currentTaxPayer.idx + 1) + " - PAY TAX BRO");
+        infoText.setFill(Color.WHITE);
+        infoText.setFont(Font.font(14));
+        
+        Text totalText = new Text("TOTAL RESOURCES: " + (currentTaxPayer.talentCount + currentTaxPayer.capitalCount + currentTaxPayer.cloudCount + currentTaxPayer.patentCount + currentTaxPayer.dataCount));
+        totalText.setFill(Color.WHITE);
+        totalText.setFont(Font.font(14));
+        
+        Text targetText = new Text("YOU MUST PAY: " + taxTarget + " RESOURCES");
+        targetText.setFill(Color.web(CONSTS.COLOR_RED));
+        targetText.setFont(Font.font(16));
+        targetText.setStyle("-fx-font-weight: bold;");
+        
+        Text paidText = new Text("PAID: 0 / " + taxTarget);
+        paidText.setFill(Color.web(CONSTS.COLOR_GREEN));
+        paidText.setFont(Font.font(14));
+        paidText.setStyle("-fx-font-weight: bold;");
+        
+        VBox resourceBox = new VBox(8);
+        resourceBox.setAlignment(javafx.geometry.Pos.CENTER);
+        resourceBox.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-background-radius: 10;");
+        
+        String resources[] = {"TALENT", "CAPITAL", "CLOUD", "PATENT", "DATA"};
+        Map<String, Integer> maxValues = new HashMap<String, Integer>();
+        maxValues.put("TALENT", currentTaxPayer.talentCount);
+        maxValues.put("CAPITAL", currentTaxPayer.capitalCount);
+        maxValues.put("CLOUD", currentTaxPayer.cloudCount);
+        maxValues.put("PATENT", currentTaxPayer.patentCount);
+        maxValues.put("DATA", currentTaxPayer.dataCount);
+        
+        Map<String, Spinner<Integer>> spinners = new HashMap<>();
+        
+        for (String resource : resources)
+        {
+            HBox row = new HBox(10);
+            row.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+            
+            Text label = new Text(resource + ":");
+            label.setFill(Color.WHITE);
+            label.setFont(Font.font(14));
+            
+            Spinner<Integer> spinner = new Spinner<>(0, maxValues.get(resource), 0);
+            spinner.setStyle("-fx-background-color: #333; -fx-text-fill: white;");
+            spinner.setPrefWidth(80);
+            spinners.put(resource, spinner);
+            
+            spinner.valueProperty().addListener((obs, oldVal, newVal) -> {
+                int totalSelected = 0;
+                for (String res : resources)
+                    totalSelected += spinners.get(res).getValue();
+
+                paidText.setText("PAID: " + totalSelected + " / " + taxTarget);
+            });
+            
+            Text ownedText = new Text("/ " + maxValues.get(resource));
+            ownedText.setFill(Color.LIGHTGRAY);
+            ownedText.setFont(Font.font(12));
+            
+            row.getChildren().addAll(label, spinner, ownedText);
+            resourceBox.getChildren().add(row);
+        }
+        
+        HBox buttonBox = new HBox(15);
+        buttonBox.setAlignment(javafx.geometry.Pos.CENTER);
+        
+        Button payBtn = new Button("PAY TAX");
+        payBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_RED + "; -fx-text-fill: white; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        payBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(payBtn, 1.2, 1000).play());
+        payBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(payBtn, 1.0, 1000).play());
+        payBtn.setCursor(javafx.scene.Cursor.HAND);
+        payBtn.setOnAction(e -> {
+            int totalSelected = 0;
+            for (String resource : resources)
+            {
+                int value = spinners.get(resource).getValue();
+                totalSelected += value;
+                taxSelection.put(resource, value);
+            }
+            
+            if (totalSelected != taxTarget)
+            {
+                Text error = new Text("YOU MUST PAY EXACTLY " + taxTarget + " RESOURCES");
+                error.setFill(Color.web(CONSTS.COLOR_RED));
+                dialog.getChildren().add(error);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> dialog.getChildren().remove(error));
+                pause.play();
+                return;
+            }
+            
+            for (String resource : resources)
+            {
+                int amount = taxSelection.get(resource);
+                switch (resource)
+                {
+                    case "TALENT": currentTaxPayer.talentCount -= amount; break;
+                    case "CAPITAL": currentTaxPayer.capitalCount -= amount; break;
+                    case "CLOUD": currentTaxPayer.cloudCount -= amount; break;
+                    case "PATENT": currentTaxPayer.patentCount -= amount; break;
+                    case "DATA": currentTaxPayer.dataCount -= amount; break;
+                }
+            }
+            
+            rootPane.getChildren().remove(overlay);
+            rootPane.setEffect(null);
+            
+            Pane successOverlay = new Pane();
+            successOverlay.setPrefSize(CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+            VBox successDialog = new VBox(15);
+            successDialog.setAlignment(javafx.geometry.Pos.CENTER);
+            successDialog.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25;");
+            successDialog.setPrefWidth(300);
+            successDialog.setPrefHeight(150);
+            Text successText = new Text("💰 TAX PAID! 💰");
+            successText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            successText.setFont(Font.font(16));
+            successText.setStyle("-fx-font-weight: bold;");
+            Button okBtn = new Button("OK");
+            okBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
+            okBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.2, 1000).play());
+            okBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.0, 1000).play());
+            okBtn.setCursor(javafx.scene.Cursor.HAND);
+            okBtn.setOnAction(ev -> {
+                rootPane.getChildren().remove(successOverlay);
+                showNextTaxPlayer(players, playerIndex + 1);
+            });
+            successDialog.getChildren().addAll(successText, okBtn);
+            successDialog.setLayoutX((CONSTS.WINDOW_WIDTH - successDialog.getPrefWidth()) / 2);
+            successDialog.setLayoutY((CONSTS.WINDOW_HEIGHT - successDialog.getPrefHeight()) / 2);
+            successOverlay.getChildren().add(successDialog);
+            rootPane.getChildren().add(successOverlay);
+        });
+        
+        buttonBox.getChildren().addAll(payBtn);
+        
+        dialog.getChildren().addAll(titleText, infoText, totalText, targetText, paidText, resourceBox, buttonBox);
+        dialog.setLayoutX((CONSTS.WINDOW_WIDTH - dialog.getPrefWidth()) / 2);
+        dialog.setLayoutY((CONSTS.WINDOW_HEIGHT - dialog.getPrefHeight()) / 2);
+        
+        overlay.getChildren().add(dialog);
+        rootPane.getChildren().add(overlay);
+    }
     public static void rollDice()
     {
         currentDieNum = (int)(11 * Math.random() + 2); // [2, 13)
@@ -1901,12 +2085,113 @@ public class Main extends Application
         
         if (currentDieNum == 7)
         {
+            Sector taxSector = null;
+            for (Sector s : SECTORS)
+            {
+                if (s.hasTaxAgent)
+                {
+                    taxSector = s;
+                    break;
+                }
+            }
+            
+            if (taxSector != null)
+            {
+                int vertexIndices[] = HELPERS.getVertexIdxFromSectorIdx(taxSector.idx);
+                List<Player> playersOnSector = new ArrayList<Player>();
+                
+                for (int vIdx : vertexIndices)
+                {
+                    int row = vIdx / (CONSTS.MAX_WIDTH + 1);
+                    int col = vIdx % (CONSTS.MAX_WIDTH + 1);
+                    Vertex v = VERTICES[row][col];
+                    if (v.owner != null && !playersOnSector.contains(v.owner))
+                        playersOnSector.add(v.owner);
+                }
+                
+                boolean hasTaxToPay = false;
+                for (Player p : playersOnSector)
+                {
+                    int totalResources = p.talentCount + p.capitalCount + p.cloudCount + p.patentCount + p.dataCount;
+                    int threshold = p.cardLimit;
+                    
+                    if (totalResources >= threshold)
+                    {
+                        hasTaxToPay = true;
+                        break;
+                    }
+                }
+                
+                if (hasTaxToPay)
+                {
+                    currentTaxPayer = null;
+                    taxTarget = 0;
+                    currentTaxPaid = 0;
+                    taxSelection.clear();
+                    taxSelection.put("TALENT", 0);
+                    taxSelection.put("CAPITAL", 0);
+                    taxSelection.put("CLOUD", 0);
+                    taxSelection.put("PATENT", 0);
+                    taxSelection.put("DATA", 0);
+                    
+                    isPayingTax = true;
+                    canInteractWithVertices = false;
+                    diceBtn.setDisable(true);
+                    shopBtn.setDisable(true);
+                    tradeBtn.setDisable(true);
+                    nextBtn.setDisable(true);
+                    
+                    showNextTaxPlayer(playersOnSector, 0);
+                    return;
+                }
+            }
+            
             diceStatusText.setText("⚄: 7 - TAX TIME");
             startSectorSelection();
             return;
         }
         
         processDiceRoll();
+    }
+    public static void showNextTaxPlayer(List<Player> players, int index)
+    {
+        if (index >= players.size())
+        {
+            isPayingTax = false;
+            isSelectingSector = false;
+            canInteractWithVertices = true;
+            
+            diceBtn.setDisable(true);
+            shopBtn.setDisable(true);
+            tradeBtn.setDisable(true);
+            nextBtn.setDisable(true);
+            
+            diceStatusText.setText("⚄: 7 - SELECT A SECTOR FOR TAX AGENT");
+            
+            startSectorSelection();
+            return;
+        }
+        
+        Player p = players.get(index);
+        int totalResources = p.talentCount + p.capitalCount + p.cloudCount + p.patentCount + p.dataCount;
+        int threshold = p.cardLimit;
+        
+        if (totalResources >= threshold)
+        {
+            currentTaxPayer = p;
+            taxTarget = (int)(totalResources / 2);
+            currentTaxPaid = 0;
+            taxSelection.clear();
+            taxSelection.put("TALENT", 0);
+            taxSelection.put("CAPITAL", 0);
+            taxSelection.put("CLOUD", 0);
+            taxSelection.put("PATENT", 0);
+            taxSelection.put("DATA", 0);
+            
+            showTaxDialog(players, index);
+        }
+        else
+            showNextTaxPlayer(players, index + 1);
     }
 
     public static void processDiceRoll()
@@ -2163,7 +2448,7 @@ public class Main extends Application
             if (selected == null)
             {
                 Text error = new Text("SELECT A TRADE PARTNER");
-                error.setFill(Color.RED);
+                error.setFill(Color.web(CONSTS.COLOR_RED));
                 dialog.getChildren().add(error);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
                 pause.setOnFinished(ev -> dialog.getChildren().remove(error));
@@ -2191,7 +2476,7 @@ public class Main extends Application
             if (!hasEnough)
             {
                 Text error = new Text("GET YO BROKE AHH OUTTA HERE");
-                error.setFill(Color.RED);
+                error.setFill(Color.web(CONSTS.COLOR_RED));
                 dialog.getChildren().add(error);
                 javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
                 pause.setOnFinished(ev -> dialog.getChildren().remove(error));
