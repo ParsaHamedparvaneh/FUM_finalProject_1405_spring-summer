@@ -24,6 +24,20 @@ import java.util.*;
 
 class HELPERS
 {
+    public static double getVertexDistance(int v1Idx, int v2Idx)
+    {
+        int cols = CONSTS.MAX_WIDTH + 1;
+        int row1 = v1Idx /cols;
+        int col1 = v1Idx % cols;
+        int row2 = v2Idx / cols;
+        int col2 = v2Idx % cols;
+        
+        double dx = row1-row2;
+        double dy = col1-col2;
+        return Math.sqrt(dx*dx + dy*dy);
+    }
+
+    public static boolean isAdjacent(int v1Idx, int v2Idx) { return getVertexDistance(v1Idx, v2Idx) <= 1; }
     public static int getCardCount(Player p)
     {
         int sum = 0;
@@ -144,29 +158,31 @@ class HELPERS
                 stackPane.setPrefSize(CONSTS.VERTEX_RADIUS * 2, CONSTS.VERTEX_RADIUS * 2);
 
                 stackPane.setOnMouseEntered(event -> {
-                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices)
+                    if (Main.canInteractWithVertices && Main.isVertexInteractable(vertex))
                     {
                         Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.4, 800);
                         timeline.play();
                     }
                 });
-
                 stackPane.setOnMouseExited(event -> {
-                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices)
+                    if (Main.canInteractWithVertices && Main.isVertexInteractable(vertex))
                     {
                         Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.0, 800);
                         timeline.play();
                     }
                 });
                 stackPane.setOnMouseClicked(event -> {
-                    if ((vertex.owner == null || vertex.owner == Main.getCurrentPlayer()) && Main.canInteractWithVertices && !Main.isPayingTax)
+                    if (Main.canInteractWithVertices && !Main.isPayingTax && Main.isVertexInteractable(vertex))
                     {
                         Player currentPlayer = Main.getCurrentPlayer();
                         
-                        if (vertex.type != CONSTS.VERTEX_TYPE_UNICORN)
-                            showPurchaseMenu(root, vertex, currentPlayer);
-                        else
-                            showVertexInfo(root, vertex, currentPlayer);
+                        if (vertex.owner == currentPlayer || vertex.owner == null)
+                        {
+                            if (vertex.type != CONSTS.VERTEX_TYPE_UNICORN)
+                                showPurchaseMenu(root, vertex, currentPlayer);
+                            else
+                                showVertexInfo(root, vertex, currentPlayer);
+                        }
                     }
                 });
                 stackPane.setCursor(javafx.scene.Cursor.HAND);
@@ -596,7 +612,7 @@ class HELPERS
         if (type.equals("MVP"))
             player.score += 1;
         else if (type.equals("UNICORN"))
-            player.score += 2;
+            player.score += 1;
         
         Main.updatePlayerInfo();
         return true;
@@ -844,6 +860,9 @@ public class Main extends Application
     static Sector SECTORS[]      = new Sector[CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT];
     static Vertex VERTICES[][]   = new Vertex[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH+1];
 
+    static int direction = 1; // 1 = forward, -1 = backward
+    static boolean atEnd = false;
+
     static VBox playerInfoPanels[] = new VBox[4];
     static Text playerScoreTexts[] = new Text[4];
     static VBox playerResourcePanels[] = new VBox[4];
@@ -903,6 +922,31 @@ public class Main extends Application
     }
 
     // APIs/others
+    public static boolean isVertexInteractable(Vertex vertex)
+    {
+        if (vertex.owner == getCurrentPlayer())
+            return true;
+        
+        if (vertex.owner == null)
+        {
+            for (int i = 0; i<VERTICES.length; i++)
+            {
+                for (int j = 0; j<VERTICES[i].length; j++)
+                {
+                    Vertex owned = VERTICES[i][j];
+                    if (owned.owner == getCurrentPlayer())
+                    {
+                        double distance = HELPERS.getVertexDistance(vertex.idx, owned.idx);
+                        if (distance <= 1)
+                            return false;
+                    }
+                }
+            }
+            return true;
+        }
+        
+        return false;
+    }
     public static void createPlayerInfoPanels(Pane root)
     {
         String colors[] = {CONSTS.PLAYER_1_COLOR, CONSTS.PLAYER_2_COLOR, CONSTS.PLAYER_3_COLOR, CONSTS.PLAYER_4_COLOR};
@@ -1873,6 +1917,8 @@ public class Main extends Application
         
         // Reset these dumbos
         currentPlayerIdx = 0;
+        direction = 1;
+        atEnd = false;
         talentPrice = cloudPrice = patentPrice = dataPrice = 4;
         talentwasBought = cloudwasBought = patentwasBought = datawasBought = false;
         talentNotBoughtForNRounds = cloudNotBoughtForNRounds = patentNotBoughtForNRounds = dataNotBoughtForNRounds = 0;
@@ -2649,61 +2695,76 @@ public class Main extends Application
 
     public static void nextTurn()
     {
-        if (!talentwasBought)
-            talentNotBoughtForNRounds += 1;
-        else
+        // 1 NOBAT
+        if (atEnd)
         {
-            talentPrice = Math.min(6, talentPrice + 1);
-            talentNotBoughtForNRounds = 0;
+            if (!talentwasBought)
+                talentNotBoughtForNRounds += 1;
+            else
+            {
+                talentPrice = Math.min(6, talentPrice + 1);
+                talentNotBoughtForNRounds = 0;
+            }
+            if (!cloudwasBought)
+                cloudNotBoughtForNRounds += 1;
+            else
+            {
+                cloudPrice = Math.min(6, cloudPrice + 1);
+                cloudNotBoughtForNRounds = 0;
+            }
+            if (!patentwasBought)
+                patentNotBoughtForNRounds += 1;
+            else
+            {
+                patentPrice = Math.min(6, patentPrice + 1);
+                patentNotBoughtForNRounds = 0;
+            }
+            if (!datawasBought)
+                dataNotBoughtForNRounds += 1;
+            else
+            {
+                dataPrice = Math.min(6, dataPrice + 1);
+                dataNotBoughtForNRounds = 0;
+            }
+
+            if (talentNotBoughtForNRounds >= 3)
+            {
+                talentPrice = Math.max(2, talentPrice - 1);
+                talentNotBoughtForNRounds = 0;
+            }
+            if (cloudNotBoughtForNRounds >= 3)
+            {
+                cloudPrice = Math.max(2, cloudPrice - 1);
+                cloudNotBoughtForNRounds = 0;
+            }
+            if (patentNotBoughtForNRounds >= 3)
+            {
+                patentPrice = Math.max(2, patentPrice - 1);
+                patentNotBoughtForNRounds = 0;
+            }
+            if (dataNotBoughtForNRounds >= 3)
+            {
+                dataPrice = Math.max(2, dataPrice - 1);
+                dataNotBoughtForNRounds = 0;
+            }
+            talentwasBought = false;
+            cloudwasBought = false;
+            patentwasBought = false;
+            datawasBought = false;
+
+            atEnd = false;
+            direction *= -1;
         }
-        if (!cloudwasBought)
-            cloudNotBoughtForNRounds += 1;
         else
         {
-            cloudPrice = Math.min(6, cloudPrice + 1);
-            cloudNotBoughtForNRounds = 0;
-        }
-        if (!patentwasBought)
-            patentNotBoughtForNRounds += 1;
-        else
-        {
-            patentPrice = Math.min(6, patentPrice + 1);
-            patentNotBoughtForNRounds = 0;
-        }
-        if (!datawasBought)
-            dataNotBoughtForNRounds += 1;
-        else
-        {
-            dataPrice = Math.min(6, dataPrice + 1);
-            dataNotBoughtForNRounds = 0;
+            int nextIdx = currentPlayerIdx + direction;
+            
+            if (nextIdx < 0 || nextIdx >= playerCount)
+                atEnd = true;
+            else
+                currentPlayerIdx = nextIdx;
         }
 
-        if (talentNotBoughtForNRounds >= 3)
-        {
-            talentPrice = Math.max(2, talentPrice - 1);
-            talentNotBoughtForNRounds = 0;
-        }
-        if (cloudNotBoughtForNRounds >= 3)
-        {
-            cloudPrice = Math.max(2, cloudPrice - 1);
-            cloudNotBoughtForNRounds = 0;
-        }
-        if (patentNotBoughtForNRounds >= 3)
-        {
-            patentPrice = Math.max(2, patentPrice - 1);
-            patentNotBoughtForNRounds = 0;
-        }
-        if (dataNotBoughtForNRounds >= 3)
-        {
-            dataPrice = Math.max(2, dataPrice - 1);
-            dataNotBoughtForNRounds = 0;
-        }
-        talentwasBought = false;
-        cloudwasBought = false;
-        patentwasBought = false;
-        datawasBought = false;
-
-        currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
         System.out.println("Next player: " + (currentPlayerIdx + 1));
         diceStatusText.setText("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
         updatePlayerInfo();
