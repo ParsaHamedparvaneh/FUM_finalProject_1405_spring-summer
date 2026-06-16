@@ -57,8 +57,8 @@ class HELPERS
         for (int i = 0; i<SECTORS.length; i++)
         {
             Sector sector = SECTORS[i];
-            int row = i / CONSTS.MAX_HEIGHT;
-            int col = i % CONSTS.MAX_WIDTH;
+            int row = i/CONSTS.MAX_HEIGHT;
+            int col = i%CONSTS.MAX_WIDTH;
             
             double x = CONSTS.OFFSET_X + col * CONSTS.CELL_SIZE + (CONSTS.CELL_SIZE - CONSTS.SECTOR_SIZE) / 2;
             double y = CONSTS.OFFSET_Y + row * CONSTS.CELL_SIZE + (CONSTS.CELL_SIZE - CONSTS.SECTOR_SIZE) / 2;
@@ -67,6 +67,13 @@ class HELPERS
             sectorPane.setLayoutX(x);
             sectorPane.setLayoutY(y);
             sectorPane.setPrefSize(CONSTS.SECTOR_SIZE, CONSTS.SECTOR_SIZE);
+            
+            final Sector currentSector = sector;
+            sectorPane.setOnMouseClicked(event -> {
+                if (Main.isSelectingSector)
+                    Main.selectSector(currentSector);
+            });
+            sectorPane.setCursor(javafx.scene.Cursor.HAND);
             
             Rectangle rect = new Rectangle(CONSTS.SECTOR_SIZE, CONSTS.SECTOR_SIZE);
             rect.setFill(Color.web(CONSTS.SECTOR_COLORS_HM.get(sector.type)));
@@ -836,6 +843,11 @@ public class Main extends Application
     static Sector SECTORS[]      = new Sector[CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT];
     static Vertex VERTICES[][]   = new Vertex[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH+1];
 
+    static int currentDieNum = 0;
+    static boolean isSelectingSector = false;
+    static Sector selectedTaxSector = null;
+    static Sector oldTaxSector = null;
+
     static Player selectedTradePlayer = null;
     static Map<String, Integer> currentOffer = new HashMap<String, Integer>();
 
@@ -880,6 +892,177 @@ public class Main extends Application
     }
 
     // APIs/others
+    public static void startSectorSelection()
+    {
+        isSelectingSector = true;
+        canInteractWithVertices = false;
+        diceBtn.setDisable(true);
+        shopBtn.setDisable(true);
+        tradeBtn.setDisable(true);
+        nextBtn.setDisable(true);
+        
+        for (Node node : rootPane.getChildren())
+        {
+            if (node instanceof StackPane)
+            {
+                StackPane sp = (StackPane) node;
+                for (Node child : sp.getChildren())
+                {
+                    if (child instanceof Rectangle)
+                    {
+                        Rectangle rect = (Rectangle) child;
+                        if (rect.getUserData() == null)
+                            rect.setUserData(rect.getStroke());
+                        
+                        // Find the sector
+                        int sectorIndex = -1;
+                        for (int idx = 0; idx < SECTORS.length; idx++)
+                        {
+                            if (SECTORS[idx] != null)
+                            {
+                                int vertexIndices[] = HELPERS.getVertexIdxFromSectorIdx(idx);
+                                boolean sectorHasOwnedVertex = false;
+                                for (int vIdx : vertexIndices)
+                                {
+                                    int row = vIdx / (CONSTS.MAX_WIDTH + 1);
+                                    int col = vIdx % (CONSTS.MAX_WIDTH + 1);
+                                    Vertex v = VERTICES[row][col];
+                                    if (v.owner != null)
+                                    {
+                                        sectorHasOwnedVertex = true;
+                                        break;
+                                    }
+                                }
+                                if (sectorHasOwnedVertex && !SECTORS[idx].hasTaxAgent)
+                                {
+                                    sectorIndex = idx;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (sectorIndex != -1)
+                        {
+                            rect.setStroke(Color.GREEN);
+                            rect.setStrokeWidth(3);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    public static void selectSector(Sector sector)
+    {
+        if (!isSelectingSector) return;
+        
+        boolean hasOwnedVertex = false;
+        int vertexIndices[] = HELPERS.getVertexIdxFromSectorIdx(sector.idx);
+        for (int vIdx : vertexIndices)
+        {
+            int row = vIdx/(CONSTS.MAX_WIDTH+1);
+            int col = vIdx%(CONSTS.MAX_WIDTH+1);
+            Vertex v = VERTICES[row][col];
+            if (v.owner != null)
+            {
+                hasOwnedVertex = true;
+                break;
+            }
+        }
+        
+        if (!hasOwnedVertex) return;
+        if (sector.hasTaxAgent) return;
+        
+        selectedTaxSector = sector;
+        isSelectingSector = false;
+        
+        for (Node node : rootPane.getChildren())
+        {
+            if (node instanceof StackPane)
+            {
+                StackPane sp = (StackPane) node;
+                for (Node child : sp.getChildren())
+                {
+                    if (child instanceof Rectangle)
+                    {
+                        Rectangle rect = (Rectangle) child;
+                        if (rect.getUserData() != null && (rect.getUserData() instanceof Color))
+                        {
+                            rect.setStroke((Color) rect.getUserData());
+                            rect.setStrokeWidth(2);
+                        }
+                    }
+                }
+            }
+        }
+        
+        applyTaxAgent(selectedTaxSector);
+    }
+
+    public static void applyTaxAgent(Sector sector)
+    {
+        oldTaxSector = null;
+        for (Sector s : SECTORS)
+        {
+            if (s.hasTaxAgent)
+            {
+                oldTaxSector = s;
+                s.hasTaxAgent = false;
+                break;
+            }
+        }
+        
+        sector.hasTaxAgent = true;
+        
+        refreshSectors();
+        // HERE MAYBE?
+        canInteractWithVertices = true;
+        diceBtn.setDisable(true);
+        shopBtn.setDisable(false);
+        tradeBtn.setDisable(false);
+        nextBtn.setDisable(false);
+        
+        processDiceRoll();
+    }
+    public static void refreshSectors()
+    {
+        List<Node> toRemove = new ArrayList<Node>();
+        List<Node> verticesAndEdges = new ArrayList<Node>();
+        
+        for (Node node : rootPane.getChildren())
+        {
+            if (node instanceof StackPane)
+            {
+                StackPane sp = (StackPane) node;
+                boolean isSector = false;
+                boolean isVertex = false;
+                
+                for (Node child : sp.getChildren())
+                {
+                    if (child instanceof Rectangle)
+                        isSector = true;
+                    if (child instanceof Circle)
+                        isVertex = true;
+                }
+                
+                if (isSector && !isVertex)
+                    toRemove.add(node);
+                else if (isVertex)
+                    verticesAndEdges.add(node);
+            }
+            else if (node instanceof Line)
+                verticesAndEdges.add(node);
+        }
+        
+        rootPane.getChildren().removeAll(toRemove);
+        HELPERS.drawSectors(rootPane, SECTORS);
+        
+        for (Node node : verticesAndEdges)
+        {
+            rootPane.getChildren().remove(node);
+            rootPane.getChildren().add(node);
+        }
+    }
     public static void showTradeOffer(Player targetPlayer, Player currentPlayer)
     {
         SnapshotParameters params = new SnapshotParameters();
@@ -1713,66 +1896,74 @@ public class Main extends Application
     }
     public static void rollDice()
     {
-        int dieNum = (int)(11 * Math.random() + 2);
-        diceStatusText.setText("⚄: " + dieNum);
-        if (dieNum != 7)
+        currentDieNum = (int)(11 * Math.random() + 2); // [2, 13)
+        diceStatusText.setText("⚄: " + currentDieNum);
+        
+        if (currentDieNum == 7)
         {
-            for (Sector s : SECTORS)
+            diceStatusText.setText("⚄: 7 - TAX TIME");
+            startSectorSelection();
+            return;
+        }
+        
+        processDiceRoll();
+    }
+
+    public static void processDiceRoll()
+    {
+        int dieNum = currentDieNum;
+        
+        for (Sector s : SECTORS)
+        {
+            if (s.dieNum == dieNum && !(s.hasTaxAgent))
             {
-                if (s.dieNum == dieNum && !(s.hasTaxAgent))
+                for (int vIdx : HELPERS.getVertexIdxFromSectorIdx(s.idx))
                 {
-                    for (int vIdx : HELPERS.getVertexIdxFromSectorIdx(s.idx))
+                    Vertex vert = null;
+                    boolean __shouldBreak = false;
+                    for (int i = 0; i != VERTICES.length; i++)
                     {
-                        Vertex vert = null;
-                        boolean __shouldBreak = false;
-                        for (int i = 0; i!=VERTICES.length; i++)
+                        for (int j = 0; j != VERTICES[i].length; j++)
                         {
-                            for (int j = 0; j!=VERTICES[i].length; j++)
+                            if (VERTICES[i][j].idx == vIdx)
                             {
-                                if (VERTICES[i][j].idx == vIdx)
-                                {
-                                    vert = VERTICES[i][j];
-                                    __shouldBreak = true;
-                                    break;
-                                }
+                                vert = VERTICES[i][j];
+                                __shouldBreak = true;
+                                break;
                             }
-                            if (__shouldBreak)
-                                break;
                         }
-                        Player __owner = vert.owner;
-                        if (__owner == null)
-                            continue;
-                        switch (CONSTS.SECTOR_REWARDS_HM.get(s.type))
-                        {
-                            case CONSTS.REWARD_TYPE_AI:
-                                __owner.talentCount += 1;
-                                break;
-                            case CONSTS.REWARD_TYPE_CLOUD:
-                                __owner.cloudCount += 1;
-                                break;
-                            case CONSTS.REWARD_TYPE_DATA:
-                                __owner.dataCount += 1;
-                                break;
-                            case CONSTS.REWARD_TYPE_FINTECH:
-                                __owner.capitalCount += 1;
-                                break;
-                            case CONSTS.REWARD_TYPE_IP:
-                                __owner.patentCount += 1;
-                                break;
-                            case CONSTS.REWARD_TYPE_REGU:
-                                break;
-                            default:
-                                break;
-                        }
+                        if (__shouldBreak)
+                            break;
+                    }
+                    Player __owner = vert.owner;
+                    if (__owner == null)
+                        continue;
+                    switch (CONSTS.SECTOR_REWARDS_HM.get(s.type))
+                    {
+                        case CONSTS.REWARD_TYPE_AI:
+                            __owner.talentCount += 1;
+                            break;
+                        case CONSTS.REWARD_TYPE_CLOUD:
+                            __owner.cloudCount += 1;
+                            break;
+                        case CONSTS.REWARD_TYPE_DATA:
+                            __owner.dataCount += 1;
+                            break;
+                        case CONSTS.REWARD_TYPE_FINTECH:
+                            __owner.capitalCount += 1;
+                            break;
+                        case CONSTS.REWARD_TYPE_IP:
+                            __owner.patentCount += 1;
+                            break;
+                        case CONSTS.REWARD_TYPE_REGU:
+                            break;
+                        default:
+                            break;
                     }
                 }
             }
         }
-        else
-        {
-            // TODO when = 7 (regulatory)
-            diceStatusText.setText("⚄: 7 - TAX TIME!");
-        }
+        
         updateButtonsAfterRoll();
     }
 
