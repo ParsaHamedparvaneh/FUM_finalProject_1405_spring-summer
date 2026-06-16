@@ -598,6 +598,7 @@ class HELPERS
         else if (type.equals("UNICORN"))
             player.score += 2;
         
+        Main.updatePlayerInfo();
         return true;
     }
 
@@ -843,6 +844,10 @@ public class Main extends Application
     static Sector SECTORS[]      = new Sector[CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT];
     static Vertex VERTICES[][]   = new Vertex[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH+1];
 
+    static VBox playerInfoPanels[] = new VBox[4];
+    static Text playerScoreTexts[] = new Text[4];
+    static VBox playerResourcePanels[] = new VBox[4];
+
     static int currentDieNum = 0;
     static boolean isSelectingSector = false;
     static Sector selectedTaxSector = null;
@@ -898,6 +903,136 @@ public class Main extends Application
     }
 
     // APIs/others
+    public static void createPlayerInfoPanels(Pane root)
+    {
+        String colors[] = {CONSTS.PLAYER_1_COLOR, CONSTS.PLAYER_2_COLOR, CONSTS.PLAYER_3_COLOR, CONSTS.PLAYER_4_COLOR};
+        int positions[] = {0, 0,
+                        CONSTS.WINDOW_WIDTH - 150, 0,
+                        0, CONSTS.WINDOW_HEIGHT - 160,
+                        CONSTS.WINDOW_WIDTH - 150, CONSTS.WINDOW_HEIGHT - 160};
+        
+        for (int i = 0; i<playerCount; i++)
+        {
+            VBox panel = new VBox(3);
+            panel.setAlignment(javafx.geometry.Pos.CENTER);
+            panel.setStyle("-fx-background-color: rgba(0,0,0,0.7); -fx-background-radius: 10; -fx-padding: 8; -fx-border-color: " + colors[i] + "; -fx-border-width: 2; -fx-border-radius: 10;");
+            panel.setPrefWidth(150);
+            panel.setPrefHeight(85);
+            panel.setLayoutX(positions[i * 2]);
+            panel.setLayoutY(positions[i * 2 + 1]);
+            
+            Text nameText = new Text("PLAYER " + (i + 1));
+            nameText.setFill(Color.web(colors[i]));
+            nameText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 12));
+            nameText.setStyle("-fx-font-weight: bold;");
+            
+            Text scoreText = new Text("SCORE: 0");
+            scoreText.setFill(Color.WHITE);
+            scoreText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 11));
+            playerScoreTexts[i] = scoreText;
+            
+            Text totalText = new Text("CARDS: " + HELPERS.getCardCount(PLAYERS[i]));
+            totalText.setFill(Color.WHITE);
+            totalText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 10));
+            
+            VBox resourceBox = new VBox(2);
+            resourceBox.setAlignment(javafx.geometry.Pos.CENTER);
+            resourceBox.setStyle("-fx-padding: 2;");
+            
+            Text talentText = new Text("🎓: " + PLAYERS[i].talentCount);
+            talentText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            talentText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+            
+            Text capitalText = new Text("💰: " + PLAYERS[i].capitalCount);
+            capitalText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            capitalText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+            
+            Text cloudText = new Text("☁️: " + PLAYERS[i].cloudCount);
+            cloudText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            cloudText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+            
+            Text patentText = new Text("📜: " + PLAYERS[i].patentCount);
+            patentText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            patentText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+            
+            Text dataText = new Text("📊: " + PLAYERS[i].dataCount);
+            dataText.setFill(Color.web(CONSTS.COLOR_GREEN));
+            dataText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+            
+            resourceBox.getChildren().addAll(talentText, capitalText, cloudText, patentText, dataText);
+            playerResourcePanels[i] = resourceBox;
+            
+            if (i == currentPlayerIdx)
+            {
+                resourceBox.setVisible(true);
+                panel.setStyle("-fx-background-color: rgba(0,0,0,0.8); -fx-background-radius: 10; -fx-padding: 8; -fx-border-color: " + colors[i] + "; -fx-border-width: 3; -fx-border-radius: 10;");
+            }
+            else
+                resourceBox.setVisible(false);
+            
+            if (i < playerCount)
+            {
+                panel.getChildren().addAll(nameText, scoreText, totalText, resourceBox);
+                root.getChildren().add(panel);
+                playerInfoPanels[i] = panel;
+            }
+        }
+    }
+    public static void updatePlayerInfo()
+    {
+        String colors[] = {CONSTS.PLAYER_1_COLOR, CONSTS.PLAYER_2_COLOR, CONSTS.PLAYER_3_COLOR, CONSTS.PLAYER_4_COLOR};
+        
+        for (int i = 0; i<playerCount; i++)
+        {
+            if (playerScoreTexts[i] != null)
+                playerScoreTexts[i].setText("SCORE: " + PLAYERS[i].score);
+            
+            if (playerInfoPanels[i] != null && playerInfoPanels[i].getChildren().size() >= 3)
+            {
+                if (playerInfoPanels[i].getChildren().get(2) instanceof Text)
+                {
+                    Text totalText = (Text) playerInfoPanels[i].getChildren().get(2);
+                    totalText.setText("TOTAL: " + HELPERS.getCardCount(PLAYERS[i]));
+                }
+            }
+            
+            if (playerResourcePanels[i] != null)
+            {
+                playerResourcePanels[i].getChildren().clear();
+                
+                Text talentText = new Text("🎓: " + PLAYERS[i].talentCount);
+                talentText.setFill(Color.web(CONSTS.COLOR_GREEN));
+                talentText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+                
+                Text capitalText = new Text("💰: " + PLAYERS[i].capitalCount);
+                capitalText.setFill(Color.web(CONSTS.COLOR_GREEN));
+                capitalText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+                
+                Text cloudText = new Text("☁️: " + PLAYERS[i].cloudCount);
+                cloudText.setFill(Color.web(CONSTS.COLOR_GREEN));
+                cloudText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+                
+                Text patentText = new Text("📜: " + PLAYERS[i].patentCount);
+                patentText.setFill(Color.web(CONSTS.COLOR_GREEN));
+                patentText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+                
+                Text dataText = new Text("📊: " + PLAYERS[i].dataCount);
+                dataText.setFill(Color.web(CONSTS.COLOR_GREEN));
+                dataText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 9));
+                
+                playerResourcePanels[i].getChildren().addAll(talentText, capitalText, cloudText, patentText, dataText);
+                playerResourcePanels[i].setVisible(i == currentPlayerIdx);
+                
+                if (playerInfoPanels[i] != null)
+                {
+                    if (i == currentPlayerIdx)
+                        playerInfoPanels[i].setStyle("-fx-background-color: rgba(0,0,0,0.8); -fx-background-radius: 10; -fx-padding: 8; -fx-border-color: " + colors[i] + "; -fx-border-width: 3; -fx-border-radius: 10;");
+                    else
+                        playerInfoPanels[i].setStyle("-fx-background-color: rgba(0,0,0,0.7); -fx-background-radius: 10; -fx-padding: 8; -fx-border-color: " + colors[i] + "; -fx-border-width: 2; -fx-border-radius: 10;");
+                }
+            }
+        }
+    }
     public static void startSectorSelection()
     {
         if (isPayingTax) return;
@@ -1029,8 +1164,9 @@ public class Main extends Application
         
         sector.hasTaxAgent = true;
         
+        updatePlayerInfo();
         refreshSectors();
-        
+
         canInteractWithVertices = true;
         diceBtn.setDisable(true);
         shopBtn.setDisable(false);
@@ -1038,7 +1174,8 @@ public class Main extends Application
         nextBtn.setDisable(false);
         
         diceStatusText.setText("⚄: 7");
-        
+
+        updatePlayerInfo();
         processDiceRoll();
     }
     public static void refreshSectors()
@@ -1262,7 +1399,10 @@ public class Main extends Application
             okBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 8 20; -fx-background-radius: 5;");
             okBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.2, 1000).play());
             okBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(okBtn, 1.0, 1000).play());
-            okBtn.setOnAction(ev -> rootPane.getChildren().remove(successOverlay));
+            okBtn.setOnAction(ev -> {
+                rootPane.getChildren().remove(successOverlay);
+                updatePlayerInfo();
+            });
             okBtn.setCursor(javafx.scene.Cursor.HAND);
             successDialog.getChildren().addAll(successText, okBtn);
             successDialog.setLayoutX((CONSTS.WINDOW_WIDTH - successDialog.getPrefWidth()) / 2);
@@ -1468,6 +1608,7 @@ public class Main extends Application
                 pause.setOnFinished(ev -> dialog.getChildren().remove(errorMsg));
                 pause.play();
             }
+            updatePlayerInfo();
         });
         
         Button cancelBtn = new Button("CANCEL");
@@ -1478,6 +1619,7 @@ public class Main extends Application
         cancelBtn.setOnAction(e -> {
             rootPane.getChildren().remove(overlay);
             rootPane.setEffect(null);
+            updatePlayerInfo();
         });
         
         buttonBox.getChildren().addAll(purchaseBtn, cancelBtn);
@@ -1782,6 +1924,7 @@ public class Main extends Application
         root.getChildren().add(buttonBar);
 
         createDiceStatusDisplay(root);
+        createPlayerInfoPanels(root);
         
         rootPane = root;
         
@@ -2067,6 +2210,7 @@ public class Main extends Application
             successDialog.setLayoutY((CONSTS.WINDOW_HEIGHT - successDialog.getPrefHeight()) / 2);
             successOverlay.getChildren().add(successDialog);
             rootPane.getChildren().add(successOverlay);
+            updatePlayerInfo();
         });
         
         buttonBox.getChildren().addAll(payBtn);
@@ -2249,6 +2393,7 @@ public class Main extends Application
             }
         }
         
+        updatePlayerInfo();
         updateButtonsAfterRoll();
     }
 
@@ -2305,6 +2450,7 @@ public class Main extends Application
         closeBtn.setOnAction(e -> {
             rootPane.getChildren().remove(overlay);
             rootPane.setEffect(null);
+            updatePlayerInfo();
         });
         
         dialog.getChildren().addAll(titleText, capitalText, pricesBox, closeBtn);
@@ -2378,7 +2524,6 @@ public class Main extends Application
         giveGrid.setVgap(5);
         
         String resources[] = {"TALENT", "CAPITAL", "CLOUD", "PATENT", "DATA"};
-        int giveValues[] = {0, 0, 0, 0, 0};
         Spinner<Integer>[] giveSpinners = new Spinner[5];
         
         for (int i = 0; i<resources.length; i++)
@@ -2409,8 +2554,7 @@ public class Main extends Application
         receiveGrid.setHgap(10);
         receiveGrid.setVgap(5);
         
-        int receiveValues[] = {0, 0, 0, 0, 0};
-        Spinner<Integer>[] receiveSpinners = new Spinner[5];
+        Spinner<Integer> receiveSpinners[] = new Spinner[5];
         
         for (int i = 0; i<resources.length; i++)
         {
@@ -2562,6 +2706,7 @@ public class Main extends Application
         currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
         System.out.println("Next player: " + (currentPlayerIdx + 1));
         diceStatusText.setText("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
+        updatePlayerInfo();
         updateButtonsAfterNext();
     }
 }
