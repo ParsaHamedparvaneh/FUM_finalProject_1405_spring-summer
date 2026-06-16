@@ -778,6 +778,8 @@ class Sector
     public String type;
     public int dieNum;
 
+    public boolean hasTaxAgent;
+
     public Sector(int i)
     {
         idx = i;
@@ -786,6 +788,8 @@ class Sector
         type = types[(int)(Math.random() * types.length)];
 
         dieNum = (int)(11 * Math.random() + 2);
+
+        hasTaxAgent = false;
     }
 }
 
@@ -1485,6 +1489,7 @@ public class Main extends Application
         SECTORS = new Sector[CONSTS.MAX_HEIGHT*CONSTS.MAX_HEIGHT];
         for (int i = 0; i<CONSTS.MAX_HEIGHT*CONSTS.MAX_HEIGHT; i++)
             SECTORS[i] = new Sector(i);
+        SECTORS[new Random().nextInt(SECTORS.length)].hasTaxAgent = true;
         // END INIT SECTORS
         
         // INIT VERTICES
@@ -1685,7 +1690,7 @@ public class Main extends Application
         {
             for (Sector s : SECTORS)
             {
-                if (s.dieNum == dieNum)
+                if (s.dieNum == dieNum && !(s.hasTaxAgent))
                 {
                     for (int vIdx : HELPERS.getVertexIdxFromSectorIdx(s.idx))
                     {
@@ -1737,7 +1742,7 @@ public class Main extends Application
         else
         {
             // TODO when = 7 (regulatory)
-            diceStatusText.setText("⚄: 7 - REGULATORY EVENT!");
+            diceStatusText.setText("⚄: 7 - TAX TIME!");
         }
         updateButtonsAfterRoll();
     }
