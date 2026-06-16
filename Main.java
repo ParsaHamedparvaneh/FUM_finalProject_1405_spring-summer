@@ -4,6 +4,8 @@ import javafx.animation.*;
 import javafx.scene.layout.*;
 import javafx.application.Application;
 import javafx.scene.control.Button;
+import javafx.scene.control.RadioButton;
+import javafx.scene.control.ToggleGroup;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.effect.GaussianBlur;
 import javafx.scene.image.ImageView;
@@ -668,6 +670,8 @@ public class Main extends Application
     static Sector SECTORS[]      = new Sector[CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT];
     static Vertex VERTICES[][]   = new Vertex[CONSTS.MAX_HEIGHT+1][CONSTS.MAX_WIDTH+1];
 
+    static Text diceStatusText;
+
     static int playerCount;
     static Button diceBtn;
     static Button shopBtn;
@@ -698,86 +702,162 @@ public class Main extends Application
     @Override
     public void start(Stage primaryStage)
     {
+        showPlayerSelection(primaryStage);
+    }
+
+    public static void main(String args[])
+    {
+        launch(args);
+    }
+
+    // APIs/others
+    public static void showPlayerSelection(Stage primaryStage)
+    {
+        Pane selectionPane = new Pane();
+        selectionPane.setStyle("-fx-background-color: #000000;");
+        
+        VBox selectionBox = new VBox(20);
+        selectionBox.setAlignment(javafx.geometry.Pos.CENTER);
+        selectionBox.setLayoutX((CONSTS.WINDOW_WIDTH - 300) / 2);
+        selectionBox.setLayoutY((CONSTS.WINDOW_HEIGHT - 200) / 2);
+        selectionBox.setPrefWidth(300);
+        selectionBox.setPrefHeight(200);
+        selectionBox.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_GREEN + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        
+        Text title = new Text("SELECT NUMBER OF PLAYERS");
+        title.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
+        title.setFill(Color.WHITE);
+        title.setStyle("-fx-font-weight: bold;");
+        
+        ToggleGroup group = new ToggleGroup();
+        
+        RadioButton twoPlayer = new RadioButton("2 PLAYERS");
+        twoPlayer.setToggleGroup(group);
+        twoPlayer.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        twoPlayer.setCursor(javafx.scene.Cursor.HAND);
+        
+        RadioButton threePlayer = new RadioButton("3 PLAYERS");
+        threePlayer.setToggleGroup(group);
+        threePlayer.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        threePlayer.setCursor(javafx.scene.Cursor.HAND);
+        
+        RadioButton fourPlayer = new RadioButton("4 PLAYERS");
+        fourPlayer.setToggleGroup(group);
+        fourPlayer.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        fourPlayer.setCursor(javafx.scene.Cursor.HAND);
+        
+        Button startBtn = new Button("START GAME");
+        startBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        startBtn.setCursor(javafx.scene.Cursor.HAND);
+        startBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(startBtn, 1.2, 1000).play());
+        startBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(startBtn, 1.0, 1000).play());
+        
+        startBtn.setOnAction(e -> {
+            if (twoPlayer.isSelected())
+                playerCount = 2;
+            else if (threePlayer.isSelected())
+                playerCount = 3;
+            else if (fourPlayer.isSelected())
+                playerCount = 4;
+            else
+                playerCount = 2;
+            
+            for (int i = 0; i < playerCount; i++)
+                PLAYERS[i] = new Player(i);
+            
+            initGame(primaryStage);
+        });
+        
+        selectionBox.getChildren().addAll(title, twoPlayer, threePlayer, fourPlayer, startBtn);
+        selectionPane.getChildren().add(selectionBox);
+        
+        Scene selectionScene = new Scene(selectionPane, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        primaryStage.setScene(selectionScene);
+        primaryStage.setTitle("MONOPOLY LOOKING AHH GAME");
+        primaryStage.show();
+    }
+    public static void initGame(Stage primaryStage)
+    {
+        // INIT EDGES
+        EDGES_FROM_TO = new int[CONSTS.MAX_HEIGHT][CONSTS.MAX_WIDTH];
+        for (int i = 0; i<CONSTS.MAX_HEIGHT; i++)
+            for (int j = 0; j<CONSTS.MAX_WIDTH; j++)
+                EDGES_FROM_TO[i][j] = 0;
+        // END INIT EDGES
+        
+        // INIT SECTORS
+        SECTORS = new Sector[CONSTS.MAX_HEIGHT*CONSTS.MAX_HEIGHT];
+        for (int i = 0; i<CONSTS.MAX_HEIGHT*CONSTS.MAX_HEIGHT; i++)
+            SECTORS[i] = new Sector(i);
+        // END INIT SECTORS
+        
+        // INIT VERTICES
+        VERTICES = new Vertex[CONSTS.MAX_HEIGHT + 1][CONSTS.MAX_WIDTH + 1];
+        int count = 0;
+        for (int i = 0; i<CONSTS.MAX_HEIGHT + 1; i++)
+            for (int j = 0; j<CONSTS.MAX_WIDTH + 1; j++)
+                VERTICES[i][j] = new Vertex(count++);
+        // END INIT VERTICES
+        
+        // Reset these dumbos
+        currentPlayerIdx = 0;
+        talentPrice = cloudPrice = patentPrice = dataPrice = 4;
+        talentwasBought = cloudwasBought = patentwasBought = datawasBought = false;
+        talentNotBoughtForNRounds = cloudNotBoughtForNRounds = patentNotBoughtForNRounds = dataNotBoughtForNRounds = 0;
+        canInteractWithVertices = false;
+        
+        // Start
         Pane root = new Pane();
         root.setStyle("-fx-background-color: #000000;");
-
+        
         HELPERS.drawSectors(root, SECTORS);
         HELPERS.drawVertices(root, VERTICES);
-
-
+        
         HBox buttonBar = new HBox(20);
         buttonBar.setAlignment(javafx.geometry.Pos.CENTER);
         buttonBar.setLayoutX(0);
         buttonBar.setLayoutY(CONSTS.WINDOW_HEIGHT - 80);
         buttonBar.setPrefWidth(CONSTS.WINDOW_WIDTH);
         buttonBar.setStyle("-fx-background-color: #000000; -fx-padding: 10;");
-
+        
         diceBtn = new Button("⚄");
         diceBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
         diceBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.2, 1000).play());
         diceBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.0, 1000).play());
         diceBtn.setOnAction(e -> rollDice());
+        
         shopBtn = new Button("🏪");
         shopBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
         shopBtn.setDisable(true);
         shopBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.2, 1000).play());
         shopBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.0, 1000).play());
         shopBtn.setOnAction(e -> openShop(getCurrentPlayer()));
+        
         tradeBtn = new Button("🤝");
         tradeBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
         tradeBtn.setDisable(true);
         tradeBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.2, 1000).play());
         tradeBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.0, 1000).play());
         tradeBtn.setOnAction(e -> openTrade());
+        
         nextBtn = new Button("✅");
         nextBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
         nextBtn.setDisable(true);
         nextBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.2, 1000).play());
         nextBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.0, 1000).play());
         nextBtn.setOnAction(e -> nextTurn());
+        
         buttonBar.getChildren().addAll(diceBtn, shopBtn, tradeBtn, nextBtn);
         root.getChildren().add(buttonBar);
+
+        createDiceStatusDisplay(root);
         
         rootPane = root;
-
+        
         Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
-        primaryStage.setTitle("MONOPOLY LOOKING AHH GAME");
         primaryStage.setScene(scene);
         primaryStage.show();
     }
-
-    public static void main(String args[])
-    {
-        // INIT PLAYERS
-        // TODO
-        PLAYERS[0] = new Player(0);
-        playerCount = 1;
-        // END INIT PLAYERS
-        
-        // INIT EDGES
-        for (int i = 0; i<CONSTS.MAX_HEIGHT; i++)
-            for (int j = 0; j<CONSTS.MAX_WIDTH; j++)
-                EDGES_FROM_TO[i][j] = 0;
-        // END INIT EDGES
-
-        // INIT SECTORS
-        for (int i = 0; i<CONSTS.MAX_HEIGHT * CONSTS.MAX_HEIGHT; i++)
-            SECTORS[i] = new Sector(i);
-        // END INIT SECTORS
-
-        // INIT VERTICES
-        {
-            int count = 0;
-            for (int i = 0; i<CONSTS.MAX_HEIGHT+1; i++)
-                for (int j = 0; j<CONSTS.MAX_WIDTH+1; j++)
-                    VERTICES[i][j] = new Vertex(count++);
-        }
-        // END INIT VERTICES
-
-        launch(args);
-    }
-
-    // APIs/others
     public static Player getCurrentPlayer()
     {
         return PLAYERS[currentPlayerIdx];
@@ -890,9 +970,20 @@ public class Main extends Application
         row.getChildren().addAll(nameText, priceText, amountText, buyBtn);
         return row;
     }
+    public static void createDiceStatusDisplay(Pane root)
+    {
+        diceStatusText = new Text("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
+        diceStatusText.setFont(Font.font(CONSTS.CUSTOM_FONT != null ? CONSTS.CUSTOM_FONT.getFamily() : "Arial", 16));
+        diceStatusText.setFill(Color.WHITE);
+        diceStatusText.setStyle("-fx-font-weight: bold;");
+        diceStatusText.setLayoutX((CONSTS.WINDOW_WIDTH - 300) / 2);
+        diceStatusText.setLayoutY(CONSTS.WINDOW_HEIGHT - 110);
+        root.getChildren().add(diceStatusText);
+    }
     public static void rollDice()
     {
         int dieNum = (int)(11 * Math.random() + 2);
+        diceStatusText.setText("⚄: " + dieNum);
         if (dieNum != 7)
         {
             for (Sector s : SECTORS)
@@ -949,6 +1040,7 @@ public class Main extends Application
         else
         {
             // TODO when = 7 (regulatory)
+            diceStatusText.setText("⚄: 7 - REGULATORY EVENT!");
         }
         updateButtonsAfterRoll();
     }
@@ -1076,7 +1168,8 @@ public class Main extends Application
         datawasBought = false;
 
         currentPlayerIdx = (currentPlayerIdx + 1) % playerCount;
-        System.out.println("Next player: " + currentPlayerIdx);
+        System.out.println("Next player: " + currentPlayerIdx + 1);
+        diceStatusText.setText("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
         updateButtonsAfterNext();
     }
 }
