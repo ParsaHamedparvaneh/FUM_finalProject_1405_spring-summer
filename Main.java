@@ -22,6 +22,16 @@ import java.util.*;
 
 class HELPERS
 {
+    public static int getCardCount(Player p)
+    {
+        int sum = 0;
+        sum += p.talentCount;
+        sum += p.capitalCount;
+        sum += p.cloudCount;
+        sum += p.patentCount;
+        sum += p.dataCount;
+        return sum;
+    }
     public static int[] getVertexIdxFromSectorIdx(int sectorIdx)
     {
         int sectorsPerRow = CONSTS.MAX_WIDTH;
@@ -235,7 +245,7 @@ class HELPERS
 
     public static void showVertexInfo(Pane root, Vertex vertex, Player player)
     {
-        System.out.println("Vertex " + vertex.idx + " owned by Player " + vertex.owner.idx + " | Type: " + vertex.type);
+        System.out.println("Vertex " + vertex.idx + " owned by Player " + (vertex.owner.idx + 1) + " | Type: " + vertex.type);
     }
 
     public static Color getVertexColor(Vertex vertex)
@@ -308,7 +318,10 @@ class HELPERS
             costs = CONSTS.MVP_COST.get(0);
         else if (type.equals("UNICORN"))
             costs = CONSTS.UNICORN_COST.get(0);
-        
+
+        if (type.equals("UNICORN") && player.role == CONSTS.PLAYER_ROLE_NERD_AHH)
+            costs.put(CONSTS.REWARD_TYPE_CLOUD, 1);
+
         VBox resourceList = new VBox(3);
         resourceList.setAlignment(javafx.geometry.Pos.CENTER);
         
@@ -608,6 +621,7 @@ class Player
     public int idx;
 
     public int score;
+    public int cardLimit;
     
     public int talentCount;
     public int capitalCount;
@@ -622,6 +636,8 @@ class Player
         idx = i;
 
         score = 0;
+
+        cardLimit = 7;
 
         talentCount = capitalCount = cloudCount = patentCount = dataCount = 10;
         
@@ -762,10 +778,11 @@ public class Main extends Application
             else
                 playerCount = 2;
             
-            for (int i = 0; i < playerCount; i++)
+            for (int i = 0; i<playerCount; i++)
                 PLAYERS[i] = new Player(i);
             
-            initGame(primaryStage);
+            currentPlayerIdx = 0;
+            showRoleSelection(primaryStage);
         });
         
         selectionBox.getChildren().addAll(title, twoPlayer, threePlayer, fourPlayer, startBtn);
@@ -774,6 +791,131 @@ public class Main extends Application
         Scene selectionScene = new Scene(selectionPane, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
         primaryStage.setScene(selectionScene);
         primaryStage.setTitle("MONOPOLY LOOKING AHH GAME");
+        primaryStage.show();
+    }
+    public static void showRoleSelection(Stage primaryStage)
+    {
+        Pane rolePane = new Pane();
+        rolePane.setStyle("-fx-background-color: #000000;");
+        
+        VBox roleBox = new VBox(20);
+        roleBox.setAlignment(javafx.geometry.Pos.CENTER);
+        roleBox.setLayoutX((CONSTS.WINDOW_WIDTH - 400) / 2);
+        roleBox.setLayoutY((CONSTS.WINDOW_HEIGHT - 300) / 2);
+        roleBox.setPrefWidth(400);
+        roleBox.setPrefHeight(300);
+        roleBox.setStyle("-fx-background-color: #111111; -fx-background-radius: 20; -fx-padding: 25; -fx-border-color: " + CONSTS.COLOR_GREEN + "; -fx-border-width: 2; -fx-border-radius: 20;");
+        
+        Text title = new Text("PLAYER " + (currentPlayerIdx + 1) + " - SELECT YOUR ROLE");
+        title.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily()));
+        title.setFill(Color.WHITE);
+        title.setStyle("-fx-font-weight: bold;");
+        
+        ToggleGroup roleGroup = new ToggleGroup();
+        
+        RadioButton ceoBtn = new RadioButton("CEO   - Gets 3:1 ratio in market                          ");
+        ceoBtn.setToggleGroup(roleGroup);
+        ceoBtn.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        ceoBtn.setCursor(javafx.scene.Cursor.HAND);
+        ceoBtn.setDisable(false);
+        
+        RadioButton nerdBtn = new RadioButton("NERD - Pays 1 CLOUD for UNICORN upgrades  ");
+        nerdBtn.setToggleGroup(roleGroup);
+        nerdBtn.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        nerdBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        RadioButton richBtn = new RadioButton("RICH  - Starts with 2 CAPITALs and a limit of 9  ");
+        richBtn.setToggleGroup(roleGroup);
+        richBtn.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        richBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        RadioButton noneBtn = new RadioButton("NONE");
+        noneBtn.setToggleGroup(roleGroup);
+        noneBtn.setStyle("-fx-text-fill: white; -fx-font-size: 14px;");
+        noneBtn.setCursor(javafx.scene.Cursor.HAND);
+        
+        boolean ceoTaken = false;
+        boolean nerdTaken = false;
+        boolean richTaken = false;
+        
+        for (int i = 0; i<currentPlayerIdx; i++)
+        {
+            if (PLAYERS[i].role.equals(CONSTS.PLAYER_ROLE_CEO))
+                ceoTaken = true;
+            else if (PLAYERS[i].role.equals(CONSTS.PLAYER_ROLE_NERD_AHH))
+                nerdTaken = true;
+            else if (PLAYERS[i].role.equals(CONSTS.PLAYER_ROLE_RICH_AHH))
+                richTaken = true;
+        }
+        
+        ceoBtn.setDisable(ceoTaken);
+        nerdBtn.setDisable(nerdTaken);
+        richBtn.setDisable(richTaken);
+        
+        Button confirmBtn = new Button("CONFIRM ROLE");
+        confirmBtn.setStyle("-fx-background-color: " + CONSTS.COLOR_GREEN + "; -fx-text-fill: black; -fx-font-weight: bold; -fx-padding: 10 20; -fx-background-radius: 5;");
+        confirmBtn.setCursor(javafx.scene.Cursor.HAND);
+        confirmBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(confirmBtn, 1.2, 1000).play());
+        confirmBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(confirmBtn, 1.0, 1000).play());
+        
+        confirmBtn.setOnAction(e -> {
+            String selectedRole = null;
+            if (ceoBtn.isSelected())
+                selectedRole = CONSTS.PLAYER_ROLE_CEO;
+            else if (nerdBtn.isSelected())
+                selectedRole = CONSTS.PLAYER_ROLE_NERD_AHH;
+            else if (richBtn.isSelected())
+                selectedRole = CONSTS.PLAYER_ROLE_RICH_AHH;
+            else if (noneBtn.isSelected())
+                selectedRole = CONSTS.PLAYER_ROLE_NONE;
+            
+            if (selectedRole == null)
+            {
+                Text error = new Text("Select a role");
+                error.setFill(Color.RED);
+                roleBox.getChildren().add(error);
+                javafx.animation.PauseTransition pause = new javafx.animation.PauseTransition(javafx.util.Duration.seconds(2));
+                pause.setOnFinished(ev -> roleBox.getChildren().remove(error));
+                pause.play();
+                return;
+            }
+            
+            PLAYERS[currentPlayerIdx].role = selectedRole;
+            
+            switch (selectedRole)
+            {
+                case CONSTS.PLAYER_ROLE_CEO:
+                    PLAYERS[currentPlayerIdx].score = -1;
+                    break;
+                case CONSTS.PLAYER_ROLE_NERD_AHH:
+                    PLAYERS[currentPlayerIdx].score = -1;
+                    break;
+                case CONSTS.PLAYER_ROLE_RICH_AHH:
+                    PLAYERS[currentPlayerIdx].score = -1;
+                    PLAYERS[currentPlayerIdx].capitalCount = 2;
+                    PLAYERS[currentPlayerIdx].cardLimit = 9;
+                    break;
+                case CONSTS.PLAYER_ROLE_NONE:
+                    break;
+            }
+            
+            currentPlayerIdx++;
+            
+            if (currentPlayerIdx<playerCount)
+                showRoleSelection(primaryStage);
+            else
+            {
+                currentPlayerIdx = 0;
+                initGame(primaryStage);
+            }
+        });
+        
+        roleBox.getChildren().addAll(title, ceoBtn, nerdBtn, richBtn, noneBtn, confirmBtn);
+        
+        rolePane.getChildren().add(roleBox);
+        
+        Scene roleScene = new Scene(rolePane, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        primaryStage.setScene(roleScene);
         primaryStage.show();
     }
     public static void initGame(Stage primaryStage)
@@ -1079,10 +1221,14 @@ public class Main extends Application
         pricesBox.setAlignment(javafx.geometry.Pos.CENTER);
         pricesBox.setStyle("-fx-padding: 10; -fx-background-color: #222; -fx-background-radius: 10;");
         
-        HBox talentRow = createShopRow("🎓", talentPrice, player.talentCount, "TALENT", player, dialog, overlay, capitalText);
-        HBox cloudRow = createShopRow("☁️", cloudPrice, player.cloudCount, "CLOUD", player, dialog, overlay, capitalText);
-        HBox patentRow = createShopRow("📜", patentPrice, player.patentCount, "PATENT", player, dialog, overlay, capitalText);
-        HBox dataRow = createShopRow("📊", dataPrice, player.dataCount, "DATA", player, dialog, overlay, capitalText);
+        int __talentPrice = (player.role != CONSTS.PLAYER_ROLE_CEO) ? talentPrice : talentPrice / 4 * 3;
+        int __cloudPrice  = (player.role != CONSTS.PLAYER_ROLE_CEO) ? cloudPrice  : cloudPrice  / 4 * 3;
+        int __patentPrice = (player.role != CONSTS.PLAYER_ROLE_CEO) ? patentPrice : patentPrice / 4 * 3;
+        int __dataPrice   = (player.role != CONSTS.PLAYER_ROLE_CEO) ? dataPrice   : dataPrice   / 4 * 3;
+        HBox talentRow = createShopRow("🎓", __talentPrice, player.talentCount, "TALENT", player, dialog, overlay, capitalText);
+        HBox cloudRow = createShopRow("☁️", __cloudPrice, player.cloudCount, "CLOUD", player, dialog, overlay, capitalText);
+        HBox patentRow = createShopRow("📜", __patentPrice, player.patentCount, "PATENT", player, dialog, overlay, capitalText);
+        HBox dataRow = createShopRow("📊", __dataPrice, player.dataCount, "DATA", player, dialog, overlay, capitalText);
         
         pricesBox.getChildren().addAll(talentRow, cloudRow, patentRow, dataRow);
         
@@ -1112,7 +1258,6 @@ public class Main extends Application
 
     public static void nextTurn()
     {
-        // TODO: Implement next player logic
         if (!talentwasBought)
             talentNotBoughtForNRounds += 1;
         else
