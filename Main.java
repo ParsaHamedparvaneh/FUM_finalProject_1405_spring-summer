@@ -2336,7 +2336,7 @@ public class Main extends Application
                 }
             }
             
-            diceStatusText.setText("⚄: 7 - TAX TIME");
+            diceStatusText.setText("⚄: 7 - SELECT A SECTOR FOR TAX AGENT");
             startSectorSelection();
             return;
         }
@@ -2754,6 +2754,7 @@ public class Main extends Application
 
             atEnd = false;
             direction *= -1;
+            currentPlayerIdx += direction;
         }
         else
         {
