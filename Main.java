@@ -1011,43 +1011,61 @@ public class Main extends Application
     public static void distributeInitResources()
     {
         isInitializationNobat = false;
-        System.out.println("INITIALIZATION COMPLETE");
+        System.out.println(".");
         
         for (Map.Entry<Player, List<Vertex>> entry : initSelectedVertices.entrySet())
         {
             Player player = entry.getKey();
-            for (Vertex vertex : entry.getValue())
+            List<Vertex> vertices = entry.getValue();
+            
+            for (int i = 0; i<vertices.size(); i++)
             {
-                int vertexIdx = vertex.idx;
-                Sector sector = null;
-                for (Sector s : SECTORS)
+                Vertex vertex = vertices.get(i);
+                
+                player.score += 1;
+                
+                if (i == 1)
                 {
-                    int vertexIndices[] = HELPERS.getVertexIdxFromSectorIdx(s.idx);
-                    for (int vIdx : vertexIndices)
+                    int vertexIdx = vertex.idx;
+                    Sector sector = null;
+                    for (Sector s : SECTORS)
                     {
-                        if (vIdx == vertexIdx)
+                        int vertexIndices[] = HELPERS.getVertexIdxFromSectorIdx(s.idx);
+                        for (int vIdx : vertexIndices)
                         {
-                            sector = s;
-                            break;
+                            if (vIdx == vertexIdx)
+                            {
+                                sector = s;
+                                break;
+                            }
+                        }
+                        if (sector != null) break;
+                    }
+                    
+                    if (sector != null)
+                    {
+                        String rewardType = CONSTS.SECTOR_REWARDS_HM.get(sector.type);
+                        switch (rewardType)
+                        {
+                            case CONSTS.REWARD_TYPE_AI:
+                                player.talentCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_CLOUD:
+                                player.cloudCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_DATA:
+                                player.dataCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_FINTECH:
+                                player.capitalCount += 1;
+                                break;
+                            case CONSTS.REWARD_TYPE_IP:
+                                player.patentCount += 1;
+                                break;
+                            default: break;
                         }
                     }
-                    if (sector != null) break;
                 }
-                
-                if (sector != null)
-                {
-                    String rewardType = CONSTS.SECTOR_REWARDS_HM.get(sector.type);
-                    switch (rewardType)
-                    {
-                        case CONSTS.REWARD_TYPE_AI: player.talentCount += 1; break;
-                        case CONSTS.REWARD_TYPE_CLOUD: player.cloudCount += 1; break;
-                        case CONSTS.REWARD_TYPE_DATA: player.dataCount += 1; break;
-                        case CONSTS.REWARD_TYPE_FINTECH: player.capitalCount += 1; break;
-                        case CONSTS.REWARD_TYPE_IP: player.patentCount += 1; break;
-                        default: break;
-                    }
-                }
-                player.score += 1;
             }
         }
         
@@ -2107,10 +2125,10 @@ public class Main extends Application
             switch (selectedRole)
             {
                 case CONSTS.PLAYER_ROLE_CEO:
-                    PLAYERS[currentPlayerIdx].score = -1;
+                    PLAYERS[currentPlayerIdx].score = 0;
                     break;
                 case CONSTS.PLAYER_ROLE_NERD_AHH:
-                    PLAYERS[currentPlayerIdx].score = -1;
+                    PLAYERS[currentPlayerIdx].score = 0;
                     break;
                 case CONSTS.PLAYER_ROLE_RICH_AHH:
                     PLAYERS[currentPlayerIdx].score = -1;
