@@ -165,18 +165,24 @@ class HELPERS
                     }
                 });
                 stackPane.setOnMouseExited(event -> {
-                    if (Main.canInteractWithVertices && Main.isVertexInteractable(vertex))
-                    {
-                        Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.0, 800);
-                        timeline.play();
-                    }
+                    Timeline timeline = HELPERS.createCustomScaleAnimation(stackPane, 1.0, 800);
+                    timeline.play();
                 });
                 stackPane.setOnMouseClicked(event -> {
                     if (Main.canInteractWithVertices && !Main.isPayingTax && Main.isVertexInteractable(vertex))
                     {
                         Player currentPlayer = Main.getCurrentPlayer();
                         
-                        if (vertex.owner == currentPlayer || vertex.owner == null)
+                        if (Main.isInitializationNobat)
+                        {
+                            List<Vertex> selected = Main.initSelectedVertices.get(currentPlayer);
+                            if (vertex.owner == null && (selected == null || selected.size() < 2))
+                            {
+                                Main.pendingInitVertex = vertex;
+                                Main.diceStatusText.setText("⚄: INITIALIZATION - PLAYER " + (currentPlayer.idx+1) + " NOW SELECT AN EDGE");
+                            }
+                        }
+                        else if (vertex.owner == currentPlayer || vertex.owner == null)
                         {
                             if (vertex.type != CONSTS.VERTEX_TYPE_UNICORN)
                                 showPurchaseMenu(root, vertex, currentPlayer);
@@ -243,7 +249,15 @@ class HELPERS
                     if (Main.canInteractWithVertices && edge.owner == null)
                     {
                         Player currentPlayer = Main.getCurrentPlayer();
-                        if (Main.canBuyEdge(edge, currentPlayer))
+                        if (Main.isInitializationNobat)
+                        {
+                            if (Main.pendingInitVertex != null && Main.canBuyEdge(edge, currentPlayer))
+                            {
+                                Main.handleInitializationNobat(Main.pendingInitVertex, edge, currentPlayer);
+                                Main.pendingInitVertex = null;
+                            }
+                        }
+                        else if (Main.canBuyEdge(edge, currentPlayer))
                             Main.showEdgePurchaseDialog(root, edge, currentPlayer);
                     }
                 });
@@ -297,6 +311,13 @@ class HELPERS
 
     public static void showPurchaseMenu(Pane root, Vertex vertex, Player player)
     {
+        if (Main.isInitializationNobat)
+        {
+            Main.pendingInitVertex = vertex;
+            Main.diceStatusText.setText("⚄: INITIALIZATION - PLAYER " + (Main.currentPlayerIdx + 1) + " NOW SELECT AN EDGE");
+            return;
+        }
+
         SnapshotParameters params = new SnapshotParameters();
         params.setFill(Color.TRANSPARENT);
         WritableImage snapshot = root.snapshot(params, null);
@@ -863,6 +884,12 @@ public class Main extends Application
     static int direction = 1; // 1 = forward, -1 = backward
     static boolean atEnd = false;
 
+    static boolean isInitializationNobat = true;
+    static int initTurnsCompleted = 0;
+    static int initTotalTurns = 0;
+    static Map<Player, List<Vertex>> initSelectedVertices = new HashMap<Player, List<Vertex>>();
+    static Vertex pendingInitVertex = null;
+
     static VBox playerInfoPanels[] = new VBox[4];
     static Text playerScoreTexts[] = new Text[4];
     static VBox playerResourcePanels[] = new VBox[4];
@@ -922,8 +949,147 @@ public class Main extends Application
     }
 
     // APIs/others
+    public static void handleInitializationNobat(Vertex vertex, Edge edge, Player player)
+    {
+        if (!isInitializationNobat) return;
+        
+        List<Vertex> playerVertices = initSelectedVertices.get(player);
+        if (playerVertices != null && playerVertices.size() >= 2) return;
+        
+        vertex.owner = player;
+        vertex.type = CONSTS.VERTEX_TYPE_MVP;
+        edge.owner = player;
+        
+        if (playerVertices == null)
+        {
+            playerVertices = new ArrayList<Vertex>();
+            initSelectedVertices.put(player, playerVertices);
+        }
+        playerVertices.add(vertex);
+        
+        pendingInitVertex = null;
+        
+        HELPERS.refreshVertexColor(rootPane, vertex);
+        refreshEdgesColor();
+        updatePlayerInfo();
+        
+        initTurnsCompleted++;
+        
+        if (initTurnsCompleted >= initTotalTurns)
+            distributeInitResources();
+        else
+            nextInitTurn();
+    }
+
+    public static void nextInitTurn()
+    {
+        int nextIdx = currentPlayerIdx + direction;
+        
+        if (nextIdx < 0 || nextIdx >= playerCount)
+            direction *= -1;
+        else
+            currentPlayerIdx = nextIdx;
+        
+        pendingInitVertex = null;
+        
+        for (Node node : rootPane.getChildren())
+        {
+            if (node instanceof StackPane)
+            {
+                StackPane sp = (StackPane) node;
+                sp.setScaleX(1.0);
+                sp.setScaleY(1.0);
+            }
+        }
+        
+        if (initTurnsCompleted >= initTotalTurns)
+            distributeInitResources();
+        else
+            diceStatusText.setText("⚄: INITIALIZATION - PLAYER " + (currentPlayerIdx + 1) + " CHOOSE VERTEX + EDGE");
+    }
+
+    public static void distributeInitResources()
+    {
+        isInitializationNobat = false;
+        System.out.println("INITIALIZATION COMPLETE");
+        
+        for (Map.Entry<Player, List<Vertex>> entry : initSelectedVertices.entrySet())
+        {
+            Player player = entry.getKey();
+            for (Vertex vertex : entry.getValue())
+            {
+                int vertexIdx = vertex.idx;
+                Sector sector = null;
+                for (Sector s : SECTORS)
+                {
+                    int vertexIndices[] = HELPERS.getVertexIdxFromSectorIdx(s.idx);
+                    for (int vIdx : vertexIndices)
+                    {
+                        if (vIdx == vertexIdx)
+                        {
+                            sector = s;
+                            break;
+                        }
+                    }
+                    if (sector != null) break;
+                }
+                
+                if (sector != null)
+                {
+                    String rewardType = CONSTS.SECTOR_REWARDS_HM.get(sector.type);
+                    switch (rewardType)
+                    {
+                        case CONSTS.REWARD_TYPE_AI: player.talentCount += 1; break;
+                        case CONSTS.REWARD_TYPE_CLOUD: player.cloudCount += 1; break;
+                        case CONSTS.REWARD_TYPE_DATA: player.dataCount += 1; break;
+                        case CONSTS.REWARD_TYPE_FINTECH: player.capitalCount += 1; break;
+                        case CONSTS.REWARD_TYPE_IP: player.patentCount += 1; break;
+                        default: break;
+                    }
+                }
+                player.score += 1;
+            }
+        }
+        
+        updatePlayerInfo();
+        initSelectedVertices.clear();
+        initTurnsCompleted = 0;
+        atEnd = false;
+        direction = 1;
+
+        diceBtn.setDisable(false);
+        shopBtn.setDisable(true);
+        tradeBtn.setDisable(true);
+        nextBtn.setDisable(true);
+        canInteractWithVertices = false;
+        
+        diceStatusText.setText("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
+    }
     public static boolean isVertexInteractable(Vertex vertex)
     {
+        if (isInitializationNobat)
+        {
+            if (vertex.owner != null) return false;
+            
+            Player current = getCurrentPlayer();
+            List<Vertex> selected = initSelectedVertices.get(current);
+            if (selected != null && selected.size() >= 2) return false;
+            
+            if (pendingInitVertex != null) return false;
+            
+            for (int i = 0; i<VERTICES.length; i++)
+            {
+                for (int j = 0; j<VERTICES[i].length; j++)
+                {
+                    Vertex owned = VERTICES[i][j];
+                    if (owned.owner != null)
+                        if (HELPERS.getVertexDistance(vertex.idx, owned.idx) <= 1)
+                            return false;
+                }
+            }
+            return true;
+        }
+        
         if (vertex.owner == getCurrentPlayer())
             return true;
         
@@ -1494,6 +1660,87 @@ public class Main extends Application
     }
     public static boolean canBuyEdge(Edge edge, Player player)
     {
+        if (isInitializationNobat)
+        {
+            if (pendingInitVertex == null) return false;
+            List<Vertex> selected = initSelectedVertices.get(player);
+            if (selected != null && selected.size() >= 2) return false;
+            
+            Vertex selectedVertex = pendingInitVertex;
+            
+            int v1 = selectedVertex.idx;
+            int cols = CONSTS.MAX_WIDTH+1;
+            int row1 = v1/cols;
+            int col1 = v1%cols;
+            
+            if ((edge.row1 == row1 && edge.col1 == col1) || (edge.row2 == row1 && edge.col2 == col1))
+            {
+                if (edge.owner != null) return false;
+                
+                if (edge.row1 == edge.row2)
+                {
+                    if (edge.col1 > 0)
+                    {
+                        Edge leftEdge = horizontalEdges[edge.row1][edge.col1-1];
+                        if (leftEdge.owner != null) return false;
+                    }
+                    if (edge.col2 < CONSTS.MAX_WIDTH)
+                    {
+                        Edge rightEdge = horizontalEdges[edge.row1][edge.col1+1];
+                        if (rightEdge.owner != null) return false;
+                    }
+                    if (edge.row1 > 0)
+                    {
+                        Edge topLeftVertical = verticalEdges[edge.row1-1][edge.col1];
+                        if (topLeftVertical.owner != null) return false;
+
+                        Edge topRightVertical = verticalEdges[edge.row1-1][edge.col2];
+                        if (topRightVertical.owner != null) return false;
+                    }
+                    if (edge.row1 < CONSTS.MAX_HEIGHT)
+                    {
+                        Edge bottomLeftVertical = verticalEdges[edge.row1][edge.col1];
+                        if (bottomLeftVertical.owner != null) return false;
+
+                        Edge bottomRightVertical = verticalEdges[edge.row1][edge.col2];
+                        if (bottomRightVertical.owner != null) return false;
+                    }
+                }
+                else
+                {
+                    if (edge.row1 > 0)
+                    {
+                        Edge aboveEdge = verticalEdges[edge.row1-1][edge.col1];
+                        if (aboveEdge.owner != null) return false;
+                    }
+                    if (edge.row2 < CONSTS.MAX_HEIGHT)
+                    {
+                        Edge belowEdge = verticalEdges[edge.row1+1][edge.col1];
+                        if (belowEdge.owner != null) return false;
+                    }
+                    if (edge.col1 > 0)
+                    {
+                        Edge leftTopHorizontal = horizontalEdges[edge.row1][edge.col1-1];
+                        if (leftTopHorizontal.owner != null) return false;
+
+                        Edge leftBottomHorizontal = horizontalEdges[edge.row2][edge.col1-1];
+                        if (leftBottomHorizontal.owner != null) return false;
+                    }
+                    if (edge.col1 < CONSTS.MAX_WIDTH)
+                    {
+                        Edge rightTopHorizontal = horizontalEdges[edge.row1][edge.col1];
+                        if (rightTopHorizontal.owner != null) return false;
+
+                        Edge rightBottomHorizontal = horizontalEdges[edge.row2][edge.col1];
+                        if (rightBottomHorizontal.owner != null) return false;
+                    }
+                }
+                
+                return true;
+            }
+            return false;
+        }
+
         int vertices[][] = {{edge.row1, edge.col1}, {edge.row2, edge.col2}};
         
         for (int v[] : vertices)
@@ -1582,6 +1829,16 @@ public class Main extends Application
 
     public static void showEdgePurchaseDialog(Pane root, Edge edge, Player player)
     {
+        if (isInitializationNobat)
+        {
+            if (pendingInitVertex != null && canBuyEdge(edge, player))
+            {
+                handleInitializationNobat(pendingInitVertex, edge, player);
+                pendingInitVertex = null;
+            }
+            return;
+        }
+        
         SnapshotParameters params = new SnapshotParameters();
         params.setFill(Color.TRANSPARENT);
         WritableImage snapshot = rootPane.snapshot(params, null);
@@ -1919,6 +2176,10 @@ public class Main extends Application
         currentPlayerIdx = 0;
         direction = 1;
         atEnd = false;
+        isInitializationNobat = true;
+        initTurnsCompleted = 0;
+        initSelectedVertices.clear();
+        initTotalTurns = playerCount * 2;
         talentPrice = cloudPrice = patentPrice = dataPrice = 4;
         talentwasBought = cloudwasBought = patentwasBought = datawasBought = false;
         talentNotBoughtForNRounds = cloudNotBoughtForNRounds = patentNotBoughtForNRounds = dataNotBoughtForNRounds = 0;
@@ -1972,8 +2233,16 @@ public class Main extends Application
         createDiceStatusDisplay(root);
         createPlayerInfoPanels(root);
         
-        rootPane = root;
         
+        diceStatusText.setText("⚄: INITIALIZATION - PLAYER 1 CHOOSE VERTEX + EDGE");
+        diceBtn.setDisable(true);
+        shopBtn.setDisable(true);
+        tradeBtn.setDisable(true);
+        nextBtn.setDisable(true);
+        canInteractWithVertices = true;
+        
+        rootPane = root;
+
         Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
         primaryStage.setScene(scene);
         primaryStage.show();
