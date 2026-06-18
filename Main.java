@@ -2857,7 +2857,7 @@ public class Main extends Application
         giveGrid.setVgap(5);
         
         String resources[] = {"TALENT", "CAPITAL", "CLOUD", "PATENT", "DATA"};
-        Spinner<Integer>[] giveSpinners = new Spinner[5];
+        Spinner<Integer> giveSpinners[] = new Spinner[5];
         
         for (int i = 0; i<resources.length; i++)
         {
