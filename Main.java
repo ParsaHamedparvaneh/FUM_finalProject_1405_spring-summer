@@ -751,7 +751,6 @@ class CONSTS
     {
         try { CUSTOM_FONT = Font.loadFont(new FileInputStream("./assets/font.ttf"), 12); } catch (Exception e) {}
 
-        // HERE
         SECTOR_REWARDS_HM.put(SECTOR_TYPE_AI, REWARD_TYPE_AI);
         SECTOR_REWARDS_HM.put(SECTOR_TYPE_FINTECH, REWARD_TYPE_FINTECH);
         SECTOR_REWARDS_HM.put(SECTOR_TYPE_CLOUD, REWARD_TYPE_CLOUD);
