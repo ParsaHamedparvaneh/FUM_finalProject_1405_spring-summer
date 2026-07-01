@@ -641,7 +641,7 @@ class HELPERS
 
         Main.updatePlayerInfo();
         // save / load
-        new Thread(() -> SaveLoad.saveGame("autosave.dat")).start();
+        new Thread(() -> SaveLoad.saveGame(CONSTS.SAVE_NAME)).start();
         return true;
     }
 
@@ -803,33 +803,37 @@ class HELPERS
 
     public static void updateLongestPartnership()
     {
-        Player winner = Main.longestPartnershipOwner;
-        int bestLength = Main.longestPartnershipLength;
+        new Thread(() -> {
+            Player currentWinner = Main.longestPartnershipOwner;
+            int currentBest = Main.longestPartnershipLength;
 
-        for(Player p : Main.PLAYERS)
-        {
-            int length = getLongestPartnership(p);
-
-            if(length > bestLength && length >= 5)
-            {
-                winner = p;
-                bestLength = length;
+            for (Player p : Main.PLAYERS) {
+                if (p == null) continue;
+                int length = getLongestPartnership(p);
+                if (length > currentBest && length >= 5) {
+                    currentWinner = p;
+                    currentBest = length;
+                }
             }
-        }
 
-        if(winner != Main.longestPartnershipOwner)
-        {
-            if(Main.longestPartnershipOwner != null)
-                Main.longestPartnershipOwner.score -= 2;
+            final Player finalWinner = currentWinner;
+            final int finalBest = currentBest;
 
-            Main.longestPartnershipOwner = winner;
-            Main.longestPartnershipLength = bestLength;
+            Platform.runLater(() -> {
+                if (finalWinner != Main.longestPartnershipOwner) {
+                    if (Main.longestPartnershipOwner != null)
+                        Main.longestPartnershipOwner.score -= CONSTS.LONGEST_PARTNERSHIP_REWARD;
 
-            if(winner != null)
-                winner.score += 2;
+                    Main.longestPartnershipOwner = finalWinner;
+                    Main.longestPartnershipLength = finalBest;
 
-            Main.updatePlayerInfo();
-        }
+                    if (finalWinner != null)
+                        finalWinner.score += CONSTS.LONGEST_PARTNERSHIP_REWARD;
+
+                    Main.updatePlayerInfo();
+                }
+            });
+        }).start();
     }
 
     // winner window
@@ -890,6 +894,10 @@ class HELPERS
 
 class CONSTS
 {
+    public static int LONGEST_PARTNERSHIP_REWARD = 2;
+    
+    public static String SAVE_NAME = "autosave.dat";
+
     public static Font CUSTOM_FONT;
 
     public static final double PRANS[] = {0, 0.0104, 0.0392, 0.083, 0.1387, 0.2033, 0.2741, 0.3487, 0.4251, 0.5015, 0.5763, 0.6482, 0.7162, 0.7796, 0.8378, 0.8903, 0.937, 0.9779, 1.013, 1.0424, 1.0665, 1.0856, 1.1, 1.1102, 1.1166, 1.1197, 1.1199, 1.1176, 1.1133, 1.1074, 1.1002, 1.0921, 1.0833, 1.0742, 1.065, 1.0559, 1.0471, 1.0386, 1.0307, 1.0233, 1.0166, 1.0106, 1.0053, 1.0007, 0.9968, 0.9936, 0.9909, 0.9889, 0.9874, 0.9864, 0.9858, 0.9856, 0.9857, 0.9861, 0.9867, 0.9875, 0.9884, 0.9894, 0.9905, 0.9916, 0.9927, 0.9938, 0.9948, 0.9958, 0.9967, 0.9976, 0.9983, 0.999, 0.9996, 1.0001, 1.0006, 1.0009, 1.0012, 1.0014, 1.0016, 1.0017, 1.0017, 1.0017, 1.0017, 1.0016, 1.0016, 1.0015, 1.0013, 1.0012, 1.0011, 1.001, 1.0008, 1.0007, 1.0006, 1.0005, 1.0003, 1.0003, 1.0002, 1.0001, 1, 1, 0.9999, 0.9999, 0.9998, 0.9998, 1};
@@ -1072,6 +1080,8 @@ class Sector implements Serializable
 //save / load
 class SaveData implements Serializable
 {
+    public int pendingInitVertexIdx; // -1 if none
+
     public Player[] players;
 
     public Vertex[][] vertices;
@@ -1101,6 +1111,8 @@ class SaveLoad
         try
         {
             SaveData data = new SaveData();
+
+            data.pendingInitVertexIdx = (Main.pendingInitVertex == null) ? -1 : Main.pendingInitVertex.idx;
 
             data.players = Main.PLAYERS;
 
@@ -1142,8 +1154,7 @@ class SaveLoad
     {
         try
         {
-            ObjectInputStream in =
-                    new ObjectInputStream(new FileInputStream(fileName));
+            ObjectInputStream in = new ObjectInputStream(new FileInputStream(fileName));
 
             SaveData data = (SaveData) in.readObject();
 
@@ -1169,6 +1180,23 @@ class SaveLoad
             Main.dataPrice = data.dataPrice;
 
             Main.initSelectedVertices = data.initSelectedVertices;
+
+            
+            Main.pendingInitVertex = null;
+            if (data.pendingInitVertexIdx != -1)
+            {
+                for (Vertex row[] : Main.VERTICES)
+                {
+                    for (Vertex v : row)
+                    {
+                        if (v.idx == data.pendingInitVertexIdx)
+                        {
+                            Main.pendingInitVertex = v;
+                            break;
+                        }
+                    }
+                }
+            }
 
             System.out.println("Game Loaded.");
         }
@@ -1259,7 +1287,7 @@ public class Main extends Application
     public void start(Stage primaryStage)
     {
         Main.primaryStage = primaryStage;
-        showPlayerSelection(primaryStage);
+        showLoadOrStartScreen(primaryStage);
     }
 
     public static void main(String args[])
@@ -1268,6 +1296,154 @@ public class Main extends Application
     }
 
     // APIs/others
+    private static boolean autosaveExists()
+    {
+        File f = new File(CONSTS.SAVE_NAME);
+        return f.exists() && !f.isDirectory();
+    }
+    public static void setupGameUI(Stage primaryStage)
+    {
+        Pane root = new Pane();
+        root.setStyle("-fx-background-color: #000000;");
+
+        HELPERS.drawSectors(root, SECTORS);
+        HELPERS.drawEdges(root, horizontalEdges, verticalEdges);
+        HELPERS.drawVertices(root, VERTICES);
+
+        HBox buttonBar = new HBox(20);
+        buttonBar.setAlignment(javafx.geometry.Pos.CENTER);
+        buttonBar.setLayoutX(0);
+        buttonBar.setLayoutY(CONSTS.WINDOW_HEIGHT - 80);
+        buttonBar.setPrefWidth(CONSTS.WINDOW_WIDTH);
+        buttonBar.setStyle("-fx-background-color: #000000; -fx-padding: 10;");
+
+        diceBtn = new Button("⚄");
+        diceBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        diceBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.2, 1000).play());
+        diceBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.0, 1000).play());
+        diceBtn.setOnAction(e -> rollDice());
+
+        shopBtn = new Button("🏪");
+        shopBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        shopBtn.setDisable(true);
+        shopBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.2, 1000).play());
+        shopBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.0, 1000).play());
+        shopBtn.setOnAction(e -> openShop(getCurrentPlayer()));
+
+        tradeBtn = new Button("🤝");
+        tradeBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        tradeBtn.setDisable(true);
+        tradeBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.2, 1000).play());
+        tradeBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.0, 1000).play());
+        tradeBtn.setOnAction(e -> openTrade());
+
+        nextBtn = new Button("✅");
+        nextBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
+        nextBtn.setDisable(true);
+        nextBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.2, 1000).play());
+        nextBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.0, 1000).play());
+        nextBtn.setOnAction(e -> nextTurn());
+
+        buttonBar.getChildren().addAll(diceBtn, shopBtn, tradeBtn, nextBtn);
+        root.getChildren().add(buttonBar);
+
+        createDiceStatusDisplay(root);
+        createPlayerInfoPanels(root);
+
+
+        diceStatusText.setText("⚄: INITIALIZATION - PLAYER 1 CHOOSE VERTEX + EDGE");
+        diceBtn.setDisable(true);
+        shopBtn.setDisable(true);
+        tradeBtn.setDisable(true);
+        nextBtn.setDisable(true);
+        canInteractWithVertices = true;
+
+        rootPane = root;
+
+        Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        primaryStage.setScene(scene);
+        primaryStage.show();
+    }
+    private void loadAndContinue(Stage primaryStage)
+    {
+        SaveLoad.loadGame(CONSTS.SAVE_NAME);
+        int count = 0;
+        for (Player p : PLAYERS)
+            if (p != null)
+                count++;
+        playerCount = count;
+
+        if (isInitializationNobat)
+            initTotalTurns = playerCount * 2;
+        
+        HELPERS.updateLongestPartnership();
+        setupGameUI(primaryStage);
+        updatePlayerInfo();
+        if (isInitializationNobat)
+        {
+            if (pendingInitVertex != null)
+                diceStatusText.setText("⚄: INITIALIZATION - PLAYER " + (currentPlayerIdx + 1) + " NOW SELECT AN EDGE");
+            else
+                diceStatusText.setText("⚄: INITIALIZATION - PLAYER " + (currentPlayerIdx + 1) + " CHOOSE VERTEX + EDGE");
+            
+            canInteractWithVertices = true;
+        }
+        else
+        {
+            diceStatusText.setText("⚄: WAITING FOR PLAYER " + (currentPlayerIdx + 1) + " TO ROLL...");
+            diceBtn.setDisable(false);
+            shopBtn.setDisable(true);
+            tradeBtn.setDisable(true);
+            nextBtn.setDisable(true);
+            canInteractWithVertices = false;
+            isSelectingSector = false;
+            isPayingTax = false;
+            taxSelection.clear();
+            pendingInitVertex = null;
+        }
+    }
+    private void showLoadOrStartScreen(Stage primaryStage)
+    {
+        Pane root = new Pane();
+        root.setStyle("-fx-background-color: #000000;");
+
+        VBox box = new VBox(30);
+        box.setAlignment(Pos.CENTER);
+        box.setPrefWidth(CONSTS.WINDOW_WIDTH);
+        box.setPrefHeight(CONSTS.WINDOW_HEIGHT);
+
+        Text title = new Text("RAGS TO RICHES");
+        title.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 48));
+        title.setFill(Color.GOLD);
+
+        Button newGameBtn = new Button("New Game");
+        newGameBtn.setStyle("-fx-font-size: 18; -fx-background-color: #00ffc8; -fx-text-fill: black; -fx-padding: 10 25; -fx-background-radius: 8;");
+        newGameBtn.setOnAction(e -> {
+            showPlayerSelection(primaryStage);
+        });
+        newGameBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(newGameBtn, 1.2, 1000).play());
+        newGameBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(newGameBtn, 1.0, 1000).play());
+        newGameBtn.setCursor(javafx.scene.Cursor.HAND);
+
+        Button continueBtn = new Button("Continue");
+        continueBtn.setStyle("-fx-font-size: 18; -fx-background-color: #00ffc8; -fx-text-fill: black; -fx-padding: 10 25; -fx-background-radius: 8;");
+        continueBtn.setDisable(!autosaveExists());
+        if (!autosaveExists()) continueBtn.setStyle("-fx-opacity: 0.5;");
+        continueBtn.setOnAction(e -> {
+            loadAndContinue(primaryStage);
+        });
+        continueBtn.setOnMouseEntered(ev -> HELPERS.createCustomScaleAnimation(continueBtn, 1.2, 1000).play());
+        continueBtn.setOnMouseExited(ev -> HELPERS.createCustomScaleAnimation(continueBtn, 1.0, 1000).play());
+        continueBtn.setCursor(javafx.scene.Cursor.HAND);
+
+        box.getChildren().addAll(title, newGameBtn, continueBtn);
+        root.getChildren().add(box);
+
+        Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
+        primaryStage.setScene(scene);
+        primaryStage.setTitle("RAGS TO RICHES");
+        primaryStage.show();
+    }
     public static void handleInitializationNobat(Vertex vertex, Edge edge, Player player)
     {
         if (!isInitializationNobat) return;
@@ -1292,7 +1468,7 @@ public class Main extends Application
         refreshEdgesColor();
         updatePlayerInfo();
         // save / load
-        new Thread(() -> SaveLoad.saveGame("autosave.dat")).start();
+        new Thread(() -> SaveLoad.saveGame(CONSTS.SAVE_NAME)).start();
 
         initTurnsCompleted++;
 
@@ -1728,7 +1904,7 @@ public class Main extends Application
         updatePlayerInfo();
         processDiceRoll();
         // save / load
-        new Thread(() -> SaveLoad.saveGame("autosave.dat")).start();
+        new Thread(() -> SaveLoad.saveGame(CONSTS.SAVE_NAME)).start();
     }
     public static void refreshSectors()
     {
@@ -1945,7 +2121,7 @@ public class Main extends Application
             successDialog.setPrefHeight(150);
             Text successText = new Text("TRADE COMPLETED");
             // save / load
-            new Thread(() -> SaveLoad.saveGame("autosave.dat")).start();
+            new Thread(() -> SaveLoad.saveGame(CONSTS.SAVE_NAME)).start();
             successText.setFill(Color.web(CONSTS.COLOR_GREEN));
             successText.setFont(Font.font(16));
             successText.setStyle("-fx-font-weight: bold;");
@@ -2242,7 +2418,7 @@ public class Main extends Application
                 //longest partnership related
                 HELPERS.updateLongestPartnership();
                 //save / load
-                new Thread(() -> SaveLoad.saveGame("autosave.dat")).start();
+                new Thread(() -> SaveLoad.saveGame(CONSTS.SAVE_NAME)).start();
 
                 rootPane.getChildren().remove(overlay);
                 rootPane.setEffect(null);
@@ -2533,67 +2709,8 @@ public class Main extends Application
         talentNotBoughtForNRounds = cloudNotBoughtForNRounds = patentNotBoughtForNRounds = dataNotBoughtForNRounds = 0;
         canInteractWithVertices = false;
 
-        // Start
-        Pane root = new Pane();
-        root.setStyle("-fx-background-color: #000000;");
 
-        HELPERS.drawSectors(root, SECTORS);
-        HELPERS.drawEdges(root, horizontalEdges, verticalEdges);
-        HELPERS.drawVertices(root, VERTICES);
-
-        HBox buttonBar = new HBox(20);
-        buttonBar.setAlignment(javafx.geometry.Pos.CENTER);
-        buttonBar.setLayoutX(0);
-        buttonBar.setLayoutY(CONSTS.WINDOW_HEIGHT - 80);
-        buttonBar.setPrefWidth(CONSTS.WINDOW_WIDTH);
-        buttonBar.setStyle("-fx-background-color: #000000; -fx-padding: 10;");
-
-        diceBtn = new Button("⚄");
-        diceBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
-        diceBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.2, 1000).play());
-        diceBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(diceBtn, 1.0, 1000).play());
-        diceBtn.setOnAction(e -> rollDice());
-
-        shopBtn = new Button("🏪");
-        shopBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
-        shopBtn.setDisable(true);
-        shopBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.2, 1000).play());
-        shopBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(shopBtn, 1.0, 1000).play());
-        shopBtn.setOnAction(e -> openShop(getCurrentPlayer()));
-
-        tradeBtn = new Button("🤝");
-        tradeBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
-        tradeBtn.setDisable(true);
-        tradeBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.2, 1000).play());
-        tradeBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(tradeBtn, 1.0, 1000).play());
-        tradeBtn.setOnAction(e -> openTrade());
-
-        nextBtn = new Button("✅");
-        nextBtn.setStyle("-fx-font-size: 20px; -fx-min-width: 50; -fx-min-height: 50; -fx-max-width: 50; -fx-max-height: 50; -fx-background-radius: 25; -fx-background-color: #444; -fx-text-fill: white; -fx-cursor: hand;");
-        nextBtn.setDisable(true);
-        nextBtn.setOnMouseEntered(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.2, 1000).play());
-        nextBtn.setOnMouseExited(e -> HELPERS.createCustomScaleAnimation(nextBtn, 1.0, 1000).play());
-        nextBtn.setOnAction(e -> nextTurn());
-
-        buttonBar.getChildren().addAll(diceBtn, shopBtn, tradeBtn, nextBtn);
-        root.getChildren().add(buttonBar);
-
-        createDiceStatusDisplay(root);
-        createPlayerInfoPanels(root);
-
-
-        diceStatusText.setText("⚄: INITIALIZATION - PLAYER 1 CHOOSE VERTEX + EDGE");
-        diceBtn.setDisable(true);
-        shopBtn.setDisable(true);
-        tradeBtn.setDisable(true);
-        nextBtn.setDisable(true);
-        canInteractWithVertices = true;
-
-        rootPane = root;
-
-        Scene scene = new Scene(root, CONSTS.WINDOW_WIDTH, CONSTS.WINDOW_HEIGHT);
-        primaryStage.setScene(scene);
-        primaryStage.show();
+        setupGameUI(primaryStage);
     }
     public static Player getCurrentPlayer()
     {
