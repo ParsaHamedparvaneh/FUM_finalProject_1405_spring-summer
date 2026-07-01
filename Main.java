@@ -843,9 +843,9 @@ class HELPERS
         box.setPrefWidth(CONSTS.WINDOW_WIDTH);
         box.setPrefHeight(CONSTS.WINDOW_HEIGHT);
 
-        Text title = new Text("GAME OVER");
+        Text title = new Text("GOOD ENDING");
         title.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 42));
-        title.setFill(Color.GOLD);
+        title.setFill(Color.web(CONSTS.COLOR_GOLD));
 
         Text winnerText = new Text("PLAYER " + (winner.idx + 1) + " WINS!");
         winnerText.setFont(Font.font(CONSTS.CUSTOM_FONT.getFamily(), 28));
@@ -880,12 +880,9 @@ class HELPERS
 
     public static boolean checkWinner()
     {
-        for (int i = 0; i < Main.playerCount; i++)
-        {
-            Player p = Main.PLAYERS[i];
+        for (Player p : Main.PLAYERS)
             if (p != null && p.score >= CONSTS.WINNING_SCORE)
                 return true;
-        }
         return false;
     }
 
@@ -1261,6 +1258,7 @@ public class Main extends Application
     @Override
     public void start(Stage primaryStage)
     {
+        Main.primaryStage = primaryStage;
         showPlayerSelection(primaryStage);
     }
 
